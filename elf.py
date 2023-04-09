@@ -66,6 +66,8 @@ SHT_PROGBITS = 1
 SHT_STRTAB = 3
 SHF_ALLOC = 2
 SHF_EXECINSTR = 4
+LINUX_SEGMENT_START_ADDRESS = 0x8048000
+LINUX_ENTRY_POINT = LINUX_SEGMENT_START_ADDRESS + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE
 
 # identifies the ELF, goes in the header
 # AKA char* e_ident
@@ -237,7 +239,7 @@ class Program:
     
     def assemble(self):
 
-        elf_header = ELFHeader(entry_point=0x8048000+52+32, program_header_offset=52, section_header_offset=0, program_header_entry_size=32, program_header_count=1, section_header_entry_size=40, section_header_count=0, section_header_name_index=0)
+        elf_header = ELFHeader(entry_point=LINUX_ENTRY_POINT, program_header_offset=52, section_header_offset=0, program_header_entry_size=32, program_header_count=1, section_header_entry_size=40, section_header_count=0, section_header_name_index=0)
         program_header = ProgramHeader(file_offset=0, virtual_address=0x8048000, physical_address=0, file_size=52+32+len(self.text), memory_size=52+32+len(self.text), align=1024)
         
         return ELF(elf_header, [program_header], [], self.text)

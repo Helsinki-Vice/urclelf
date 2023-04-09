@@ -1,0 +1,3 @@
+mov r2 9
+add r2 10
+hlt
