@@ -67,7 +67,6 @@ SHT_STRTAB = 3
 SHF_ALLOC = 2
 SHF_EXECINSTR = 4
 LINUX_SEGMENT_START_ADDRESS = 0x8048000
-LINUX_ENTRY_POINT = LINUX_SEGMENT_START_ADDRESS + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE
 
 # identifies the ELF, goes in the header
 # AKA char* e_ident
@@ -159,7 +158,7 @@ class SectionHeader():
         self.flags = flags                           # sh_flags
         self.virtual_address = virtual_address       # sh_addr
         self.file_offset = file_offset               # sh_offset
-        self.file_size = file_offset                 # sh_size
+        self.file_size = file_size                   # sh_size
         self.link_index = link_index                 # sh_link
         self.info = info                             # sh_info
         self.align = align                           # sh_addralign
@@ -169,17 +168,43 @@ class SectionHeader():
         
         return struct.pack("I", self.name_index) + self.header_type.value + struct.pack("IIIIIIII", self.flags, self.virtual_address, self.file_offset, self.file_size, self.link_index, self.info, self.align, self.entry_size)
 
+class Section:
+
+    def __init__(self, name: str, data: bytes, memory_size: int, type: SectionHeaderType, is_executable: bool) -> None:
+
+        self.name = name
+        self.data = data
+        self.memory_size = memory_size
+        self.type = type
+        self.is_executable = is_executable
+    
+    @classmethod
+    def null(cls):
+        return Section(".null", bytes(), 0, SectionHeaderType.NULL, False)
+    
+    @classmethod
+    def section_names(cls, names: list[str]):
+
+        name = ".shrtrtab"
+        data = bytes()
+        for section_name in names:
+            data += section_name.encode("ascii") + bytes([0])
+        memory_size = len(data)
+        type = SectionHeaderType.STRING_TABLE
+        is_executable = False
+
+        return Section(name, data, memory_size, type, is_executable)
+
 
 #executable ELF binary file
 class ELF():
     
-    def __init__(self, elf_header: ELFHeader, program_header_table: list[ProgramHeader], section_header_table: list[SectionHeader], program_image: bytes):
+    def __init__(self, elf_header: ELFHeader, program_header_table: list[ProgramHeader], section_header_table: list[SectionHeader], sections: list[bytes]):
         
         self.elf_header = elf_header
         self.program_header_table = program_header_table
         self.section_header_table = section_header_table
-        self.program_image = program_image
-    
+        self.sections = sections
     
     #converts entire ELF to machine-ready executable
     def __bytes__(self):
@@ -194,52 +219,46 @@ class ELF():
         for section_header in self.section_header_table:
             section_header_table_bin.extend(bytes(section_header))
         
-        file_elements = {
-            0: elf_header_bin,
-            self.elf_header.program_header_offset: program_header_table_bin,
-        }
-        if self.elf_header.section_header_offset and section_header_table_bin:
-            file_elements.update({self.elf_header.section_header_offset: section_header_table_bin})
+        file_elements: list[tuple[int, bytearray]] = [(0, elf_header_bin)]
+
+        if self.elf_header.program_header_offset and program_header_table_bin:
+            file_elements.append((self.elf_header.program_header_offset, program_header_table_bin))
         
+        if self.elf_header.section_header_offset and section_header_table_bin:
+            file_elements.append((self.elf_header.section_header_offset, section_header_table_bin))
+        
+        for section_index in range(len(self.sections)):
+            file_elements.append((self.section_header_table[section_index].file_offset, bytearray(self.sections[section_index])))
+
         file_size = 0
-        for offset, data in file_elements.items():
+        for offset, data in file_elements:
             required_size = offset + len(data)
             if required_size > file_size:
                 file_size = required_size
         result = bytearray(file_size)
-        for offset, data in file_elements.items():
+        for offset, data in file_elements:
             result = result[:offset] + data + result[offset+len(data):]
         
-        return bytes(result) + self.program_image
+        return bytes(result)
 
-class Section:
-    
-    def __init__(self):
-        
-        self.name = 0
-        self.address = 0
-        self.writable = 0
-        self.executable = 0
-        self.data = bytes()
-    
-    
-    def __len__(self):
-        return len(self.data)
-    
-    
-    def __bytes__(self):
-        
-        return 0
 
 class Program:
 
     def __init__(self, text: bytes) -> None:
         
         self.text = text
+        self.virtual_address = LINUX_SEGMENT_START_ADDRESS
+        self.program_header_count = 1
+        self.section_header_count = 3
+        self.entry_point = LINUX_SEGMENT_START_ADDRESS + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count + 22
     
     def assemble(self):
 
-        elf_header = ELFHeader(entry_point=LINUX_ENTRY_POINT, program_header_offset=52, section_header_offset=0, program_header_entry_size=32, program_header_count=1, section_header_entry_size=40, section_header_count=0, section_header_name_index=0)
-        program_header = ProgramHeader(file_offset=0, virtual_address=0x8048000, physical_address=0, file_size=52+32+len(self.text), memory_size=52+32+len(self.text), align=1024)
-        
-        return ELF(elf_header, [program_header], [], self.text)
+        elf_header = ELFHeader(entry_point=self.entry_point, program_header_offset=52, section_header_offset=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count, program_header_entry_size=PROGRAM_HEADER_SIZE, program_header_count=self.program_header_count, section_header_entry_size=SECTION_HEADER_SIZE, section_header_count=self.section_header_count, section_header_name_index=1)
+        text_program_header = ProgramHeader(file_offset=0, virtual_address=LINUX_SEGMENT_START_ADDRESS, physical_address=0, file_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+22, memory_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+22, align=1024)
+        null_section_header = SectionHeader(0, SectionHeaderType.NULL, 0, 0, 0, 0, 0, 0, 1, 0)
+        section_names_section_header = SectionHeader(6, SectionHeaderType.STRING_TABLE, 0, 0, 52+32+40*3, 22, 0, 0, 1, 0)
+        text_section_header = SectionHeader(16, SectionHeaderType.PROGRAM_DATA, SHF_ALLOC|SHF_EXECINSTR, self.entry_point, 52+32+40*3+22, len(self.text), 0, 0, 1, 0)
+
+
+        return ELF(elf_header, [text_program_header], [null_section_header, section_names_section_header, text_section_header], [b"", b".null\0.shrtrtab\0.text\0", self.text])

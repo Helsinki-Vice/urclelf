@@ -13,7 +13,7 @@ class OperandEncodingFormat(enum.Enum):
 
 class Operand:
 
-    def __init__(self, value: "int | Register") -> None:
+    def __init__(self, value: "int | Register | str") -> None:
 
         self.value = value
     
@@ -79,8 +79,10 @@ class InstructionEncoding:
             elif format == OperandEncodingFormat.IMMEDIATE_8_BITS:
                 if isinstance(operand.value, Register):
                     value: int = operand.value.value.code % 256
-                else:
+                elif isinstance(operand.value, int):
                     value = operand.value % 256
+                else:
+                    return None
                 immediate = struct.pack("B", value)
             elif format == OperandEncodingFormat.IMMEDIATE_32_BITS:
                 if isinstance(operand.value, Register):
@@ -101,12 +103,50 @@ class InstructionEncoding:
 INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x00])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0x01])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding(Opcode(bytes([0x68])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x6a])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.CMP, 7, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0x88])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding(Opcode(bytes([0x89])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0xc7])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS])
+    InstructionEncoding(Opcode(bytes([0xc7])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x0f, 0x84])), Mnemonic.JZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x0f, 0x85])), Mnemonic.JNZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS])
 ]
+
+class Program:
+
+    def __init__(self, code: list[X86ASMInstruction], labels: dict[str, int], entry_point: int) -> None:
+
+        self.code = code
+        self.labels = labels
+        self.entry_point = entry_point
+        self.instruction_addresses: list[int] = []
+        self.instruction_sizes: list[int] = []
+
+    def add_instruction(self, mnemonic: Mnemonic, operands: "list[int | Register | str]", addressing_mode=AddressingMode.DIRECT):
+
+        instruction = X86ASMInstruction(mnemonic, [], addressing_mode)
+        for operand in operands:
+            instruction.operands.append(Operand(operand))
+        machine_code = encode(instruction)
+        if not machine_code:
+            return None
+        machine_code_bytes = bytes(machine_code)
+        if len(self.code) == 0:
+            self.instruction_addresses.append(self.entry_point)
+        else:
+            self.instruction_addresses.append(self.instruction_addresses[-1] + self.instruction_sizes[-1])
+        self.code.append(instruction)
+        self.instruction_sizes.append(len(machine_code_bytes))
+
 
 def encode(instruction: X86ASMInstruction):
 

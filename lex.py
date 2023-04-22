@@ -8,6 +8,7 @@ class TokenType(enum.Enum):
     CHARACTER = enum.auto()
     IDENTIFIER = enum.auto()
     NEWLINE = enum.auto()
+    RELATIVE_JUMP = enum.auto()
 
 @dataclass
 class Token:
@@ -58,6 +59,18 @@ class Lexer:
                         break
             elif self.current_char in ["r", "R", "$"]:
                 token_type = TokenType.GENERAL_REGISTER
+                while self.index < len(self.source):
+                    if not self.current_char.isspace():
+                        token_value += self.current_char
+                        self.advance()
+                    else:
+                        try:
+                            token_value = int(token_value[1:])
+                        except ValueError:
+                            return None
+                        break
+            elif self.current_char == "~":
+                token_type = TokenType.RELATIVE_JUMP
                 while self.index < len(self.source):
                     if not self.current_char.isspace():
                         token_value += self.current_char
@@ -127,7 +140,11 @@ def tokenize(source: str):
     return TokenStream(Lexer(source).tokens)
 
 
-with open("./source.urcl", "r") as file:
-    source = file.read()
-toks = tokenize(source)
-print(toks)
+def main():
+    with open("./source.urcl", "r") as file:
+        source = file.read()
+    toks = tokenize(source)
+    print(toks)
+
+if __name__ == "__main__":
+    main()

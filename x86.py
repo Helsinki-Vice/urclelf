@@ -8,6 +8,12 @@ class Mnemonic(enum.Enum):
     INT = "int"
     NOP = "nop"
     JMP = "jmp"
+    JNZ = "jnz"
+    JZ  = "jz"
+    CMP = "cmp"
+    PUSH = "push"
+    INC = "inc"
+    DEC = "dec"
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0

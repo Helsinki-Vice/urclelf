@@ -9,6 +9,9 @@ class Mnemonic(enum.Enum):
     NOP = "nop"
     JMP = "jmp"
     HLT = "hlt"
+    INC = "inc"
+    JNZ = "jnz"
+    OUT = "out"
 
     def __str__(self) -> str:
         return self.value
@@ -33,10 +36,16 @@ class GeneralRegister:
     def __str__(self) -> str:
         return f"${self.index}"
 
+@dataclass
+class RelativeAddress:
+
+    offset: int
+    def __str__(self) -> str:
+        return f"~{self.offset}"
 
 class Instruction:
 
-    def __init__(self, mnemonic: Mnemonic, operands: "list[Label | GeneralRegister | int]") -> None:
+    def __init__(self, mnemonic: Mnemonic, operands: "list[Label | GeneralRegister | int | RelativeAddress]") -> None:
 
         self.mnemonic = mnemonic
         self.operands = operands
@@ -53,9 +62,9 @@ class Instruction:
             mnemonic = Mnemonic(words.tokens[0].value.lower())
         except ValueError:
             return None
-        operands: "list[GeneralRegister | Label | int]" = []
+        operands: "list[GeneralRegister | Label | int | RelativeAddress]" = []
         for op in words.tokens[1:]:
-            if not op.value:
+            if op.value is None:
                 return None
             if op.type == lex.TokenType.LABEL:
                 operands.append(Label(op.value))
@@ -67,10 +76,30 @@ class Instruction:
                 if not isinstance(op.value, int):
                     return None
                 operands.append(op.value)
+            elif op.type == lex.TokenType.RELATIVE_JUMP:
+                if not isinstance(op.value, int):
+                    return None
+                operands.append(RelativeAddress(op.value))
             else:
                 pass
         
         return Instruction(mnemonic, operands)
+    
+    def get_jump_target(self):
+
+        if self.mnemonic not in [Mnemonic.JMP, Mnemonic.JNZ]:
+            return None
+        if not self.operands:
+            return None
+        
+        return self.operands[0]
+    
+    def get_destination_register(self):
+
+        if not self.operands:
+            return None
+        if isinstance(self.operands[0], GeneralRegister):
+            return self.operands[0]
     
     @classmethod
     def parse_str(cls, source: str):
