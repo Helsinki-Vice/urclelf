@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 class Mnemonic(enum.Enum):
     ADD = "add"
+    SUB = "sub"
     MOV = "mov"
     INT = "int"
     NOP = "nop"

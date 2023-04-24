@@ -1,1 +1,15 @@
+out 1 72  // H
+out 1 101 // e
+out 1 108 // l
+out 1 108 // l
+out 1 111 // o
+out 1 44  // ,
+out 1 32  //
+out 1 119 // w
+out 1 111 // o
+out 1 114 // r
+out 1 108 // l
+out 1 100 // d
+out 1 33  // !
+out 1 10  // \n
 hlt

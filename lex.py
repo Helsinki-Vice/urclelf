@@ -15,7 +15,7 @@ class Token:
     type: TokenType
     line_number: int
     column_number: int
-    value: "str | None"
+    value: "str | int | None"
 
     def __str__(self) -> str:
         
@@ -41,10 +41,33 @@ class Lexer:
     
     def lex(self):
 
+        inside_multiline_comment = False
+        inside_line_comment = False
         while self.index < len(self.source):
+            if self.source[self.index:].startswith("//"):
+                inside_line_comment = True
+                self.advance()
+                self.advance()
+                continue
+            if self.source[self.index:].startswith("/*"):
+                inside_multiline_comment = True
+                self.advance()
+                self.advance()
+                continue
+            if self.current_char == "\n":
+                inside_line_comment = False
+            if self.source[self.index:].startswith("*/"):
+                inside_multiline_comment = False
+                self.advance()
+                self.advance()
+                continue
+            if inside_line_comment or inside_multiline_comment:
+                self.advance()
+                continue
             if self.current_char.isspace():
                 self.advance()
                 continue
+            
             token_index = self.index
             token_line_number = self.line_number
             token_column_number = self.column_number
@@ -59,16 +82,17 @@ class Lexer:
                         break
             elif self.current_char in ["r", "R", "$"]:
                 token_type = TokenType.GENERAL_REGISTER
+                token_value = ""
                 while self.index < len(self.source):
                     if not self.current_char.isspace():
                         token_value += self.current_char
                         self.advance()
                     else:
-                        try:
-                            token_value = int(token_value[1:])
-                        except ValueError:
-                            return None
                         break
+                try:
+                    token_value = int(token_value[1:])
+                except ValueError:
+                    pass
             elif self.current_char == "~":
                 token_type = TokenType.RELATIVE_JUMP
                 while self.index < len(self.source):
@@ -76,26 +100,34 @@ class Lexer:
                         token_value += self.current_char
                         self.advance()
                     else:
-                        try:
-                            token_value = int(token_value[1:])
-                        except ValueError:
-                            return None
                         break
-            else:
-                token_type = TokenType.IDENTIFIER
+                try:
+                    token_value = int(token_value[1:])
+                except ValueError:
+                    return None
+            elif self.current_char in "-0123456789":
+                token_type = TokenType.INTEGER
+                token_value = ""
                 while self.index < len(self.source):
-                    if not self.current_char.isspace():
+                    if self.current_char.lower() in "0123456789":
                         token_value += self.current_char
                         self.advance()
                     else:
                         try:
                             token_value = int(token_value, base=0)
-                        except ValueError:
+                        finally:
                             break
-                        except TypeError:
-                            break
-                        token_type = TokenType.INTEGER
-            self.tokens.append(Token(token_type, token_line_number, token_column_number, token_value))
+            else:
+                token_type = TokenType.IDENTIFIER
+                token_value = ""
+                while self.index < len(self.source):
+                    if self.current_char.lower() in "abcdefghijklmnopqrstuvwxyz-_0123456789":
+                        token_value += self.current_char
+                        self.advance()
+                    else:
+                        break
+            token = Token(token_type, token_line_number, token_column_number, token_value)
+            self.tokens.append(token)
     
     def advance(self):
         self.column_number += 1

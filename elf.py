@@ -60,6 +60,7 @@ ET_EXEC = 2
 EM_ARM = 40
 PT_LOAD = 1
 PF_R = 4
+PF_W = 2
 PF_X = 1
 SHT_NULL = 0
 SHT_PROGBITS = 1
@@ -247,18 +248,26 @@ class Program:
     def __init__(self, text: bytes) -> None:
         
         self.text = text
-        self.virtual_address = LINUX_SEGMENT_START_ADDRESS
-        self.program_header_count = 1
+        self.virtual_address = 0x10000
+        self.program_header_count = 2
         self.section_header_count = 3
-        self.entry_point = LINUX_SEGMENT_START_ADDRESS + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count + 22
+        self.entry_point = self.virtual_address + ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count + 22
     
     def assemble(self):
 
-        elf_header = ELFHeader(entry_point=self.entry_point, program_header_offset=52, section_header_offset=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count, program_header_entry_size=PROGRAM_HEADER_SIZE, program_header_count=self.program_header_count, section_header_entry_size=SECTION_HEADER_SIZE, section_header_count=self.section_header_count, section_header_name_index=1)
-        text_program_header = ProgramHeader(file_offset=0, virtual_address=LINUX_SEGMENT_START_ADDRESS, physical_address=0, file_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+22, memory_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+22, align=1024)
+        section_names = b".null\0.shrtrtab\0.text\0"
+        program_header_table_offset = ELF_HEADER_SIZE
+        section_header_table_offset = program_header_table_offset + PROGRAM_HEADER_SIZE * self.program_header_count
+        string_table_offset = section_header_table_offset + SECTION_HEADER_SIZE * self.section_header_count
+        text_offset = string_table_offset + len(section_names)
+        string_table_address = self.virtual_address + string_table_offset
+        text_address = self.virtual_address + text_offset
+        elf_header = ELFHeader(entry_point=self.entry_point, program_header_offset=program_header_table_offset, section_header_offset=section_header_table_offset, program_header_entry_size=PROGRAM_HEADER_SIZE, program_header_count=self.program_header_count, section_header_entry_size=SECTION_HEADER_SIZE, section_header_count=self.section_header_count, section_header_name_index=1)
+        program_header = ProgramHeader(file_offset=0, virtual_address=self.virtual_address, physical_address=0, file_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+len(section_names), memory_size=ELF_HEADER_SIZE + PROGRAM_HEADER_SIZE * self.program_header_count + SECTION_HEADER_SIZE * self.section_header_count+len(self.text)+len(section_names), align=0)
+        stack_header = ProgramHeader(file_offset=text_offset+len(self.text), virtual_address=text_address+len(self.text), physical_address=0, file_size=1024, memory_size=1024, flags=PF_R|PF_W, align=0)
         null_section_header = SectionHeader(0, SectionHeaderType.NULL, 0, 0, 0, 0, 0, 0, 1, 0)
-        section_names_section_header = SectionHeader(6, SectionHeaderType.STRING_TABLE, 0, 0, 52+32+40*3, 22, 0, 0, 1, 0)
-        text_section_header = SectionHeader(16, SectionHeaderType.PROGRAM_DATA, SHF_ALLOC|SHF_EXECINSTR, self.entry_point, 52+32+40*3+22, len(self.text), 0, 0, 1, 0)
+        section_names_section_header = SectionHeader(6, SectionHeaderType.STRING_TABLE, 0, 0, string_table_offset, 22, 0, 0, 1, 0)
+        text_section_header = SectionHeader(16, SectionHeaderType.PROGRAM_DATA, SHF_ALLOC|SHF_EXECINSTR, text_address, text_offset, len(self.text), 0, 0, 1, 0)
 
 
-        return ELF(elf_header, [text_program_header], [null_section_header, section_names_section_header, text_section_header], [b"", b".null\0.shrtrtab\0.text\0", self.text])
+        return ELF(elf_header, [program_header, stack_header], [null_section_header, section_names_section_header, text_section_header], [b"", b".null\0.shrtrtab\0.text\0", self.text])

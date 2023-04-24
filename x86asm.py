@@ -11,9 +11,13 @@ class OperandEncodingFormat(enum.Enum):
     IMMEDIATE_8_BITS = enum.auto()
     IMMEDIATE_32_BITS = enum.auto()
 
+@dataclass
+class Label:
+    name: str
+
 class Operand:
 
-    def __init__(self, value: "int | Register | str") -> None:
+    def __init__(self, value: "int | Register | Label") -> None:
 
         self.value = value
     
@@ -97,6 +101,10 @@ class InstructionEncoding:
                 reg_field = reg_field.value.code.value
             if isinstance(rm_field, Register):
                 rm_field = rm_field.value.code.value
+            if isinstance(reg_field, Label):
+                return
+            if isinstance(rm_field, Label):
+                return
             mod_reg_rm = ModRegRM(mod_field, reg_field, rm_field)
         return X86Instruction(None, self.opcode, mod_reg_rm, bytes(), immediate)
 
@@ -108,6 +116,7 @@ INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.CMP, 7, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x83])), Mnemonic.SUB, 5, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x88])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0x89])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
@@ -131,7 +140,7 @@ class Program:
         self.instruction_addresses: list[int] = []
         self.instruction_sizes: list[int] = []
 
-    def add_instruction(self, mnemonic: Mnemonic, operands: "list[int | Register | str]", addressing_mode=AddressingMode.DIRECT):
+    def add_instruction(self, mnemonic: Mnemonic, operands: "list[int | Register | Label]", addressing_mode=AddressingMode.DIRECT):
 
         instruction = X86ASMInstruction(mnemonic, [], addressing_mode)
         for operand in operands:
