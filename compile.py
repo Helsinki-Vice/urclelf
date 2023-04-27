@@ -27,17 +27,17 @@ def compile_urcl(source: str) -> "Traceback | bytes":
 
     result = urcl.Program.parse_str(source)
     if not isinstance(result, urcl.Program):
-        result.push(Message("could not compile", 1, 1))
+        result.push(Message("Could not parse urcl source", 1, 1))
         return result
-    label_addresses: dict[str, int] = {}
     elf_program = elf.Program(bytes())
-    x86_code = x86asm.Program([], {}, elf_program.entry_point)
+    x86_code = x86asm.Program([], elf_program.entry_point)
     x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0])
     x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + 1000])
     x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + 1000])
     for instruction in result.code:
 
         if isinstance(instruction, urcl.Label):
+            x86_code.code.append(x86asm.Label(instruction.name))
             continue
 
         if instruction.mnemonic == urcl.Mnemonic.HLT:
@@ -93,20 +93,30 @@ def compile_urcl(source: str) -> "Traceback | bytes":
         
         elif instruction.mnemonic == urcl.Mnemonic.JMP:
             destination_operand = instruction.get_jump_target()
-            if not isinstance(destination_operand, urcl.RelativeAddress):
-                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected relative address).", 0, 0)], [])
             if len(instruction.operands) != 1:
                 return Traceback([Message(f"Incorrect number of operands supplied to JMP instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
-            x86_code.add_instruction(x86asm.Mnemonic.JNZ, [0])
-            urcl_jump_offset = destination_operand.offset
-            x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
-            x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
-            x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
+            if isinstance(destination_operand, urcl.RelativeAddress):
+                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected lLabel).", 0, 0)], [])
+                if len(instruction.operands) != 1:
+                    return Traceback([Message(f"Incorrect number of operands supplied to JMP instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
+                error = x86_code.add_instruction(x86asm.Mnemonic.JMP, [0])
+                if error:
+                    return error
+                urcl_jump_offset = destination_operand.offset
+                x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
+                x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
+                x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
+            elif isinstance(destination_operand, urcl.Label):
+                error = x86_code.add_instruction(x86asm.Mnemonic.JMP, [x86asm.Label(destination_operand.name)])
+                if error:
+                    return error
+            else:
+                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected lLabel).", 0, 0)], [])
         
         elif instruction.mnemonic == urcl.Mnemonic.BNZ:
             destination_operand = instruction.get_jump_target()
-            if not isinstance(destination_operand, urcl.RelativeAddress):
-                return Traceback([Message(f"JNZ instruction operand 1 is of incorrect type (expected relative address).", 0, 0)], [])
+            if not isinstance(destination_operand, urcl.Label):
+                return Traceback([Message(f"JNZ instruction operand 1 is of incorrect type (expected label).", 0, 0)], [])
             if len(instruction.operands) != 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to JNZ instruction - found {len(instruction.operands)}, expected 2.", 0, 0)], [])
             source_operand = instruction.operands[1]
@@ -115,14 +125,11 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             source_register = URCL_X86_REGISTER_MAPPING[source_operand.index]
             if not source_register:
                 continue
-            x86_code.add_instruction(x86asm.Mnemonic.CMP, [source_register, 0])
-            x86_code.add_instruction(x86asm.Mnemonic.JNZ, [0])
-            urcl_jump_offset = destination_operand.offset
-            x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
-            x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
-            x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
-            print(555)
-            [print(c) for c in x86_code.code]
+            x86_code.add_instruction(x86asm.Mnemonic.JNZ, [x86asm.Label(destination_operand.name)])
+            #urcl_jump_offset = destination_operand.offset
+            #x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
+            #x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
+            #x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
         elif instruction.mnemonic == urcl.Mnemonic.OUT:
             if len(instruction.operands) != 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to OUT instruction - found {len(instruction.operands)}, expected 2.", 0, 0)], [])
@@ -140,15 +147,16 @@ def compile_urcl(source: str) -> "Traceback | bytes":
         
         else:
             return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", 0, 0)], [])
-    for ins in x86_code.code:
-        print(ins)
+    #error = x86_code.resolve_labels()
+    #if error:
+    #    error.push(Message("Unable to resolve labels", 0, 0))
+    result = x86_code.assemble()
+    if isinstance(result, Traceback):
+        result.push(Message("Unable to assemble x86 assembly", 0, 0))
+        return result
     machine_code = bytes()
-    for instruction in x86_code.code:
-        b = x86asm.encode(instruction)
-        if b:
-            machine_code += bytes(b)
-        else:
-            print(instruction, b)
+    for instruction in result:
+        machine_code += bytes(instruction)
     print(machine_code.hex())
     elf_program.text = machine_code
     return bytes(elf_program.assemble())

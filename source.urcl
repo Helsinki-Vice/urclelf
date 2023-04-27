@@ -1,15 +1,24 @@
-out 1 72  // H
-out 1 101 // e
-out 1 108 // l
-out 1 108 // l
-out 1 111 // o
-out 1 44  // ,
-out 1 32  //
-out 1 119 // w
-out 1 111 // o
-out 1 114 // r
-out 1 108 // l
-out 1 100 // d
-out 1 33  // !
-out 1 10  // \n
-hlt
+
+.loop
+    out 1 72
+    out 1 101
+    out 1 108
+    out 1 108
+    out 1 111
+    out 1 32
+    out 1 102
+    out 1 114
+    out 1 111
+    out 1 109
+    out 1 32
+    out 1 120
+    out 1 56
+    out 1 54
+    out 1 32
+    out 1 85
+    out 1 82
+    out 1 67
+    out 1 76
+    out 1 33
+    out 1 10
+    jmp .loop

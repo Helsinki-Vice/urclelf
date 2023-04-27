@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import struct
 
 from x86 import Register, X86Instruction, Opcode, ModRegRM, AddressingMode, Mnemonic
+from error import Traceback, Message
 
 class OperandEncodingFormat(enum.Enum):
     OPCODE = enum.auto()
@@ -50,7 +51,7 @@ class InstructionEncoding:
     opcode_extention: int
     operand_format: list[OperandEncodingFormat]
 
-    def encode(self, instruction: X86ASMInstruction):
+    def encode(self, instruction: X86ASMInstruction) -> "X86Instruction | None":
 
         if instruction.mnemonic != self.mnemonic:
             return None
@@ -91,8 +92,10 @@ class InstructionEncoding:
             elif format == OperandEncodingFormat.IMMEDIATE_32_BITS:
                 if isinstance(operand.value, Register):
                     value: int = operand.value.value.code % 256
-                else:
+                elif isinstance(operand.value, int):
                     value = operand.value % 2**32
+                else:
+                    value = 0
                 immediate = struct.pack("I", value)
             else:
                 return None
@@ -122,6 +125,7 @@ INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xc7])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0xe9])), Mnemonic.JMP, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
@@ -132,34 +136,82 @@ INSTRUCTION_FORMATS = [
 
 class Program:
 
-    def __init__(self, code: list[X86ASMInstruction], labels: dict[str, int], entry_point: int) -> None:
+    def __init__(self, code: "list[X86ASMInstruction | Label]", entry_point: int) -> None:
 
         self.code = code
-        self.labels = labels
         self.entry_point = entry_point
-        self.instruction_addresses: list[int] = []
-        self.instruction_sizes: list[int] = []
+        #self.instruction_addresses: list[int] = []
+        #self.instruction_sizes: list[int] = []
+        #self.current_address = self.entry_point
+
+    def assemble(self):
+
+        instruction_addresses: list[int] = []
+        instruction_sizes: list[int] = []
+        label_addresses: dict[str, int] = {}
+        current_address = self.entry_point
+        machine_code: list[X86Instruction] = []
+
+        #first pass: resolve labels
+        for instruction in self.code:
+            if isinstance(instruction, Label):
+                label_addresses.update({instruction.name: current_address})
+                instruction_addresses.append(current_address)
+                instruction_sizes.append(0)
+                continue
+            machine_instruction = encode(instruction)
+            if not isinstance(machine_instruction, X86Instruction):
+                machine_instruction.push(Message(f"Unable to encode instruction '{instruction}'", 0, 0))
+                return machine_instruction
+            machine_code_bytes = bytes(machine_instruction)
+            instruction_addresses.append(current_address)
+            current_address += len(machine_code_bytes)
+            instruction_sizes.append(len(machine_code_bytes))
+        
+        #second pass: assemble
+        for instruction_index, instruction in enumerate(self.code):
+            if isinstance(instruction, Label):
+                continue
+            for operand_index, operand in enumerate(instruction.operands):
+                if isinstance(operand.value, Label):
+                    label_address = label_addresses.get(operand.value.name)
+                    if not label_address:
+                        return Traceback([], [Message(f"Cannot resolve label '{operand.value.name}'", 0, 0)])
+                    operand.value = label_address - instruction_addresses[instruction_index] - instruction_sizes[instruction_index]
+            machine_instruction = encode(instruction)
+            if not isinstance(machine_instruction, X86Instruction):
+                machine_instruction.push(Message(f"Unable to encode instruction '{instruction}'", 0, 0))
+                return machine_instruction
+            machine_code_bytes = bytes(machine_instruction)
+            instruction_addresses.append(current_address)
+            current_address += len(machine_code_bytes)
+            instruction_sizes.append(len(machine_code_bytes))
+            machine_code.append(machine_instruction)
+        
+        return machine_code
 
     def add_instruction(self, mnemonic: Mnemonic, operands: "list[int | Register | Label]", addressing_mode=AddressingMode.DIRECT):
 
         instruction = X86ASMInstruction(mnemonic, [], addressing_mode)
         for operand in operands:
             instruction.operands.append(Operand(operand))
-        machine_code = encode(instruction)
-        if not machine_code:
-            return None
-        machine_code_bytes = bytes(machine_code)
-        if len(self.code) == 0:
-            self.instruction_addresses.append(self.entry_point)
-        else:
-            self.instruction_addresses.append(self.instruction_addresses[-1] + self.instruction_sizes[-1])
         self.code.append(instruction)
-        self.instruction_sizes.append(len(machine_code_bytes))
+    """
+    def resolve_labels(self):
 
-
-def encode(instruction: X86ASMInstruction):
+        for instruction_index, instruction in enumerate(self.code):
+            for operand_index, operand in enumerate(instruction.operands):
+                if isinstance(operand.value, Label):
+                    label_address = self.labels.get(operand.value.name)
+                    if not label_address:
+                        return Traceback([], [Message(f"Cannot resolve label '{operand.value.name}'", 0, 0)])
+                    operand.value = label_address - self.instruction_addresses[instruction_index] - self.instruction_sizes[instruction_index]
+"""
+def encode(instruction: X86ASMInstruction) -> "X86Instruction | Traceback":
 
     for format in INSTRUCTION_FORMATS:
         result = format.encode(instruction)
         if result:
             return result
+    
+    return Traceback([Message(f"Cannot encode instruction '{instruction}'", 0, 0)], [])

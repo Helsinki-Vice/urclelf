@@ -47,31 +47,24 @@ class Register(enum.Enum):
     AL = RegisterType("al", RegisterCode.AL_AX_EAX, 8)
     AX = RegisterType("ax", RegisterCode.AL_AX_EAX, 16)
     EAX = RegisterType("eax", RegisterCode.AL_AX_EAX, 32)
-
     BL = RegisterType("bl", RegisterCode.BL_BX_EBX, 8)
     BX = RegisterType("bx", RegisterCode.BL_BX_EBX, 16)
     EBX = RegisterType("ebx", RegisterCode.BL_BX_EBX, 32)
-
     CL = RegisterType("cl", RegisterCode.CL_CX_ECX, 8)
     CX = RegisterType("cx", RegisterCode.CL_CX_ECX, 16)
     ECX = RegisterType("ecx", RegisterCode.CL_CX_ECX, 32)
-
     DL = RegisterType("dl", RegisterCode.DL_DX_EDX, 8)
     DX = RegisterType("dx", RegisterCode.DL_DX_EDX, 16)
     EDX = RegisterType("edx", RegisterCode.DL_DX_EDX, 32)
-
     AH = RegisterType("ah", RegisterCode.AH_SP_ESP, 8)
     SP = RegisterType("sp", RegisterCode.AH_SP_ESP, 16)
     ESP = RegisterType("esp", RegisterCode.AH_SP_ESP, 32)
-
     CH = RegisterType("ch", RegisterCode.CH_BP_EBP, 8)
     BP = RegisterType("bp", RegisterCode.CH_BP_EBP, 16)
     EBP = RegisterType("ebp", RegisterCode.CH_BP_EBP, 32)
-
     DH = RegisterType("dh", RegisterCode.DH_SI_ESI, 8)
     SI = RegisterType("si", RegisterCode.DH_SI_ESI, 16)
     ESI = RegisterType("esi", RegisterCode.DH_SI_ESI, 32)
-
     BH = RegisterType("bh", RegisterCode.BH_DI_EDI, 8)
     DI = RegisterType("di", RegisterCode.BH_DI_EDI, 16)
     EDI = RegisterType("edi", RegisterCode.BH_DI_EDI, 32)
@@ -153,3 +146,9 @@ class X86Instruction:
         machine_code += bytes(self.immediate)
 
         return machine_code
+
+class MachineCode:
+
+    def __init__(self) -> None:
+        
+        self.instructions: list[X86Instruction] = []

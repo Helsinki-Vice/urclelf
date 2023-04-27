@@ -7,14 +7,45 @@ from error import Traceback, Message
 
 class Mnemonic(enum.Enum):
     ADD = "add"
+    RSH = "rsh"
+    LOD = "lod"
+    STR = "str"
+    BGE = "bge"
+    NOR = "nor"
+    SUB = "sub"
+    JMP = "jmp"
     MOV = "mov"
     NOP = "nop"
-    JMP = "jmp"
-    HLT = "hlt"
+    IMM = "imm"
+    LSH = "lsh"
     INC = "inc"
-    BNZ = "bnz"
-    OUT = "out"
     DEC = "dec"
+    NEG = "neg"
+    AND = "and"
+    OR = "or"
+    NOT = "not"
+    XNOR = "xnor"
+    XOR = "xor"
+    NAND = "nand"
+    BRE = "bre"
+    BNE = "bne"
+    BOD = "bod"
+    BEV = "bev"
+    BLE = "ble"
+    BRZ = "brz"
+    BNZ = "bnz"
+    BRN = "brn"
+    BRP = "brp"
+    PSH = "psh"
+    POP = "pop"
+    CAL = "cal"
+    RET = "ret"
+    HLT = "hlt"
+    CPY = "cpy"
+    BRC = "brc"
+    BNC = "bnc"
+    OUT = "out"
+    DW = "dw"
 
     def __str__(self) -> str:
         return self.value
@@ -79,7 +110,6 @@ class Instruction:
             if token.type == lex.TokenType.LABEL:
                 operands.append(Label(str(token.value)))
             elif token.type == lex.TokenType.GENERAL_REGISTER:
-                print(token)
                 if not isinstance(token.value, int):
                     return Traceback([Message(f"Invalid register number: {token.value}", 0, 0)], [])
                 operands.append(GeneralRegister(token.value))
@@ -149,7 +179,6 @@ class Program:
                 instruction.push(Message(f"Invalid instruction", 0, 0))
                 return instruction
             program.code.append(instruction)
-        print(program)
         return program
     
     @classmethod
