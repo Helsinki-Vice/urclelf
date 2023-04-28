@@ -1,24 +1,12 @@
-
-.loop
-    out 1 72
-    out 1 101
-    out 1 108
-    out 1 108
-    out 1 111
-    out 1 32
-    out 1 102
-    out 1 114
-    out 1 111
-    out 1 109
-    out 1 32
-    out 1 120
-    out 1 56
-    out 1 54
-    out 1 32
-    out 1 85
-    out 1 82
-    out 1 67
-    out 1 76
-    out 1 33
-    out 1 10
-    jmp .loop
+mov $1 5
+.outer_loop
+mov $2 3
+    .inner_loop
+        out 1 65
+        dec $2 $2
+        bnz .inner_loop $2
+    out 1 66
+    dec $1 $1
+    bnz .outer_loop $1
+out 1 10
+hlt

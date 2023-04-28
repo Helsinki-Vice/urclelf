@@ -15,6 +15,8 @@ class Mnemonic(enum.Enum):
     PUSH = "push"
     INC = "inc"
     DEC = "dec"
+    PUSHAD = "pushad"
+    POPAD = "popad"
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0

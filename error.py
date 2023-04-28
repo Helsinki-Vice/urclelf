@@ -36,6 +36,6 @@ class Traceback:
 
         return "\n".join(lines)
 
-string = b"Hello from x86 URCL!\n"
-for char in string:
-    print(f"out 1 {char}")
+#string = b"Hello from x86 URCL!\n"
+#for char in string:
+#    print(f"out 1 {char}")

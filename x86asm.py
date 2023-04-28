@@ -86,6 +86,7 @@ class InstructionEncoding:
                     value: int = operand.value.value.code % 256
                 elif isinstance(operand.value, int):
                     value = operand.value % 256
+                    immediate = struct.pack("I", value)
                 else:
                     return None
                 immediate = struct.pack("B", value)
@@ -114,10 +115,12 @@ class InstructionEncoding:
 INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x00])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0x01])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding(Opcode(bytes([0x60])), Mnemonic.PUSHAD, 3, []),
+    InstructionEncoding(Opcode(bytes([0x61])), Mnemonic.POPAD, 3, []),
     InstructionEncoding(Opcode(bytes([0x68])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0x6a])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.CMP, 7, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.CMP, 7, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0x83])), Mnemonic.SUB, 5, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x88])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
@@ -215,3 +218,10 @@ def encode(instruction: X86ASMInstruction) -> "X86Instruction | Traceback":
             return result
     
     return Traceback([Message(f"Cannot encode instruction '{instruction}'", 0, 0)], [])
+
+def main():
+    pass
+    #print(InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.CMP, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]).encode(X86ASMInstruction(Mnemonic.CMP, [Operand(Register.EBX), Operand(0)], AddressingMode.INDIRECT)))
+
+if __name__ == "__main__":
+    main()
