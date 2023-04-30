@@ -1,12 +1,6 @@
-mov $1 5
-.outer_loop
-mov $2 3
-    .inner_loop
-        out 1 65
-        dec $2 $2
-        bnz .inner_loop $2
-    out 1 66
-    dec $1 $1
-    bnz .outer_loop $1
-out 1 10
+out 1 .label
+nop
+nop
+nop
+.label
 hlt

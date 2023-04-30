@@ -125,6 +125,7 @@ INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x83])), Mnemonic.SUB, 5, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0x88])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0x89])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding(Opcode(bytes([0x90])), Mnemonic.NOP, 0, []),
     InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xc7])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
@@ -180,7 +181,10 @@ class Program:
                     label_address = label_addresses.get(operand.value.name)
                     if not label_address:
                         return Traceback([], [Message(f"Cannot resolve label '{operand.value.name}'", 0, 0)])
-                    operand.value = label_address - instruction_addresses[instruction_index] - instruction_sizes[instruction_index]
+                    if instruction.mnemonic in [Mnemonic.JMP, Mnemonic.JZ, Mnemonic.JNZ]:
+                        operand.value = label_address - instruction_addresses[instruction_index] - instruction_sizes[instruction_index]
+                    else:
+                        operand.value = label_address
             machine_instruction = encode(instruction)
             if not isinstance(machine_instruction, X86Instruction):
                 machine_instruction.push(Message(f"Unable to encode instruction '{instruction}'", 0, 0))
@@ -216,7 +220,7 @@ def encode(instruction: X86ASMInstruction) -> "X86Instruction | Traceback":
         result = format.encode(instruction)
         if result:
             return result
-    
+    print("'" + str(instruction.mnemonic) + "'")
     return Traceback([Message(f"Cannot encode instruction '{instruction}'", 0, 0)], [])
 
 def main():

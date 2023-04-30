@@ -23,6 +23,24 @@ def get_destination_register(instruction: urcl.Instruction):
     
     return x86_destination_register
 
+def urcl_operand_to_x86(operand: urcl.Operand) -> "x86asm.Operand | None":
+
+    if isinstance(operand, urcl.Label):
+        return x86asm.Operand(x86asm.Label(operand.name))
+    elif isinstance(operand, urcl.GeneralRegister):
+        try:
+            register = URCL_X86_REGISTER_MAPPING[operand.index]
+        except ValueError:
+            return None
+        if register:
+            return x86asm.Operand(register)
+    elif isinstance(operand, int):
+        return x86asm.Operand(operand)
+    elif isinstance(operand, urcl.RelativeAddress):
+        return x86asm.Operand(operand.offset)
+    else:
+        return None
+    
 #TODO: fix spagetti
 def compile_urcl(source: str) -> "Traceback | bytes":
 
@@ -32,9 +50,9 @@ def compile_urcl(source: str) -> "Traceback | bytes":
         return result
     elf_program = elf.Program(bytes())
     x86_code = x86asm.Program([], elf_program.entry_point)
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0])
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + 1000])
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + 1000])
+    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0]) # Default return code
+    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + 1000]) # Setting up stack
+    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + 1000]) # Setting up stack
     for instruction in result.code:
 
         if isinstance(instruction, urcl.Label):
@@ -56,10 +74,10 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             destination = get_destination_register(instruction)
             if not destination:
                 continue
-            source_operand = instruction.operands[1]
-            if not isinstance(source_operand, int):
-                return Traceback([Message(f"Register-to-register moves not yet supported.", 0, 0)], [])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_operand])
+            source_operand = urcl_operand_to_x86(instruction.operands[1])
+            if source_operand is None:
+                continue
+            x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_operand.value])
         
         elif instruction.mnemonic == urcl.Mnemonic.INC:
             if len(instruction.operands) != 1:
@@ -75,31 +93,17 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             destination = get_destination_register(instruction)
             if not destination:
                 return Traceback([Message(f"INC instruction received incorrect destination type (expected register).", 0, 0)], [])
-            source_1 = instruction.operands[1]
-            if not isinstance(source_1, (urcl.GeneralRegister, int)):
-                return Traceback([Message(f"INC instruction received incorrect operand type (expected register or int).", 0, 0)], [])
-            source_2 = instruction.operands[2]
-            if not isinstance(source_2, (urcl.GeneralRegister, int)):
-                return Traceback([Message(f"INC instruction received incorrect operand type (expected register or int).", 0, 0)], [])
-            if isinstance(source_2, urcl.GeneralRegister):
-                x86_operand_3 = URCL_X86_REGISTER_MAPPING[source_2.index]
-                if not x86_operand_3:
-                    x86_operand_3 = 0
-            else:
-                x86_operand_3 = source_2
-            if not isinstance(source_2, (urcl.GeneralRegister, int)):
-                return Traceback([Message(f"INC instruction received incorrect operand type (expected register or int).", 0, 0)], [])
-            if isinstance(source_1, urcl.GeneralRegister):
-                x86_operand_2 = URCL_X86_REGISTER_MAPPING[source_1.index]
-                if not x86_operand_2:
-                    x86_operand_2 = 0
-            else:
-                x86_operand_2 = source_1
+            source_1 = urcl_operand_to_x86(instruction.operands[1])
+            source_2 = urcl_operand_to_x86(instruction.operands[2])
+            if source_1 is None:
+                continue
+            if source_2 is None:
+                continue
             if instruction.operands[0] != instruction.operands[1]:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86_operand_2])
+                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_1.value])
             if not destination:
                 return Traceback([Message(f"INC instruction received incorrect operand type (expected register).", 0, 0)], [])
-            x86_code.add_instruction(x86asm.Mnemonic.ADD, [destination, x86_operand_3])
+            x86_code.add_instruction(x86asm.Mnemonic.ADD, [destination, source_2.value])
         
         elif instruction.mnemonic == urcl.Mnemonic.DEC:
             if len(instruction.operands) != 2:
@@ -107,35 +111,16 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             destination = get_destination_register(instruction)
             if not destination:
                 return Traceback([Message(f"DEC instruction received incorrect destination type (expected register).", 0, 0)], [])
-            source_operand = instruction.operands[1]
-            if not isinstance(source_operand, urcl.GeneralRegister):
-                return Traceback([Message(f"DEC instruction operand 2 is of incorrect type (expected register).", 0, 0)], [])
-            source_register = URCL_X86_REGISTER_MAPPING[source_operand.index]
-            if not source_register:
-                continue
             x86_code.add_instruction(x86asm.Mnemonic.SUB, [destination, 1])
         
         elif instruction.mnemonic == urcl.Mnemonic.JMP:
             destination_operand = instruction.get_jump_target()
             if len(instruction.operands) != 1:
                 return Traceback([Message(f"Incorrect number of operands supplied to JMP instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
-            if isinstance(destination_operand, urcl.RelativeAddress):
-                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected lLabel).", 0, 0)], [])
-                if len(instruction.operands) != 1:
-                    return Traceback([Message(f"Incorrect number of operands supplied to JMP instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
-                error = x86_code.add_instruction(x86asm.Mnemonic.JMP, [0])
-                if error:
-                    return error
-                urcl_jump_offset = destination_operand.offset
-                x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
-                x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
-                x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
-            elif isinstance(destination_operand, urcl.Label):
-                error = x86_code.add_instruction(x86asm.Mnemonic.JMP, [x86asm.Label(destination_operand.name)])
-                if error:
-                    return error
+            if isinstance(destination_operand, urcl.Label):
+                x86_code.add_instruction(x86asm.Mnemonic.JMP, [x86asm.Label(destination_operand.name)])
             else:
-                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected lLabel).", 0, 0)], [])
+                return Traceback([Message(f"JMP instruction operand 1 is of incorrect type (expected Label).", 0, 0)], [])
         
         elif instruction.mnemonic == urcl.Mnemonic.BNZ:
             destination_operand = instruction.get_jump_target()
@@ -143,27 +128,24 @@ def compile_urcl(source: str) -> "Traceback | bytes":
                 return Traceback([Message(f"JNZ instruction operand 1 is of incorrect type (expected label).", 0, 0)], [])
             if len(instruction.operands) != 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to JNZ instruction - found {len(instruction.operands)}, expected 2.", 0, 0)], [])
-            source_operand = instruction.operands[1]
-            if not isinstance(source_operand, urcl.GeneralRegister):
-                return Traceback([Message(f"JNZ instruction operand 2 is of incorrect type (expected register).", 0, 0)], [])
-            source_register = URCL_X86_REGISTER_MAPPING[source_operand.index]
-            if not source_register:
+            source_operand = urcl_operand_to_x86(instruction.operands[1])
+            if not source_operand is not None:
                 continue
-            x86_code.add_instruction(x86asm.Mnemonic.CMP, [source_register, 0])
+            x86_code.add_instruction(x86asm.Mnemonic.CMP, [source_operand.value, 0])
             x86_code.add_instruction(x86asm.Mnemonic.JNZ, [x86asm.Label(destination_operand.name)])
-            #urcl_jump_offset = destination_operand.offset
-            #x86_jump_address = x86_code.instruction_addresses[len(x86_code.code) - 2 + urcl_jump_offset]
-            #x86_jump_offset = x86_jump_address - (x86_code.instruction_addresses[-1] + x86_code.instruction_sizes[-1])
-            #x86_code.code[-1].operands[0] = x86asm.Operand(x86_jump_offset)
+        
         elif instruction.mnemonic == urcl.Mnemonic.OUT:
             if len(instruction.operands) != 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to OUT instruction - found {len(instruction.operands)}, expected 2.", 0, 0)], [])
             if instruction.operands[0] != 1:
-                return Traceback([Message(f"OUT instruction operand 1 is of incorrect type (expected port).", 0, 0)], [])
-            if not isinstance(instruction.operands[1], int):
-                return Traceback([Message(f"OUT instruction operand 2 is of incorrect type (expected int).", 0, 0)], [])
+                return Traceback([Message(f"OUT instruction operand 1 is of incorrect type (expected port 1).", 0, 0)], [])
+            source_operand = urcl_operand_to_x86(instruction.operands[1])
+            if not source_operand:
+                continue
+            #if not isinstance(instruction.operands[1], int):
+            #    return Traceback([Message(f"OUT instruction operand 2 is of incorrect type (expected int).", 0, 0)], [])
             x86_code.add_instruction(x86asm.Mnemonic.PUSHAD, [])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [instruction.operands[1]])
+            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [source_operand.value])
             x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 4])
             x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 1])
             x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ECX, x86asm.Register.ESP])
@@ -173,9 +155,9 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             x86_code.add_instruction(x86asm.Mnemonic.POPAD, [])
             x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, x86asm.Register.EBP])
             
-        
         else:
             return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", 0, 0)], [])
+    
     #error = x86_code.resolve_labels()
     #if error:
     #    error.push(Message("Unable to resolve labels", 0, 0))

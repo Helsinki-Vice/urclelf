@@ -113,15 +113,16 @@ class Lexer:
                         token_value += self.current_char
                         self.advance()
                     else:
-                        try:
-                            token_value = int(token_value, base=0)
-                        finally:
-                            break
+                        break
+                try:
+                    token_value = int(token_value, base=0)
+                except ValueError:
+                    print("URBAD")
             else:
                 token_type = TokenType.IDENTIFIER
                 token_value = ""
                 while self.index < len(self.source):
-                    if self.current_char.lower() in "abcdefghijklmnopqrstuvwxyz-_0123456789":
+                    if self.current_char.lower() in "abcdefghijklmnopqrstuvwxyz":
                         token_value += self.current_char
                         self.advance()
                     else:
@@ -175,8 +176,8 @@ def tokenize(source: str):
 def main():
     with open("./source.urcl", "r") as file:
         source = file.read()
-    toks = tokenize(source)
-    print(toks)
-
+    tokens = tokenize(source)
+    print(tokens)
+    
 if __name__ == "__main__":
     main()

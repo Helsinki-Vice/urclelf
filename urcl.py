@@ -111,11 +111,11 @@ class Instruction:
                 operands.append(Label(str(token.value)))
             elif token.type == lex.TokenType.GENERAL_REGISTER:
                 if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid register number: {token.value}", 0, 0)], [])
+                    return Traceback([Message(f"Invalid register number: '{token.value}'", 0, 0)], [])
                 operands.append(GeneralRegister(token.value))
             elif token.type == lex.TokenType.INTEGER:
                 if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid integer: {token.value}", 0, 0)], [])
+                    return Traceback([Message(f"Invalid integer: '{token.value}'", 0, 0)], [])
                 operands.append(token.value)
             elif token.type == lex.TokenType.RELATIVE_JUMP:
                 if not isinstance(token.value, int):
