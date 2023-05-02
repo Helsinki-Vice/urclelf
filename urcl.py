@@ -82,7 +82,14 @@ class RelativeAddress:
     def __str__(self) -> str:
         return f"~{self.offset}"
 
-Operand = Union[Label, GeneralRegister, int, RelativeAddress]
+@dataclass
+class Character:
+
+    char: str
+    def __str__(self) -> str:
+        return f"'{self.char}'"
+
+Operand = Union[Label, GeneralRegister, int, RelativeAddress, Character]
 
 class Instruction:
 
@@ -121,14 +128,18 @@ class Instruction:
                 if not isinstance(token.value, int):
                     return Traceback([Message(f"line {token.line_number}:{token.column_number} - Invalid relative jump: {token.value}", 0, 0)], [])
                 operands.append(RelativeAddress(token.value))
+            elif token.type == lex.TokenType.CHARACTER:
+                if not isinstance(token.value, str) or not token.value:
+                    return Traceback([Message(f"line {token.line_number}:{token.column_number} - Character: {token.value}", 0, 0)], [])
+                operands.append(Character(token.value))
             else:
-                pass
+                return Traceback([Message(f"Unsupported operand '{token}'", token.line_number, token.column_number)], [])
         
         return Instruction(mnemonic, operands)
     
     def get_jump_target(self):
 
-        if self.mnemonic not in [Mnemonic.JMP, Mnemonic.BNZ]:
+        if self.mnemonic not in [Mnemonic.JMP, Mnemonic.BNZ, Mnemonic.CAL]:
             return None
         if not self.operands:
             return None
@@ -146,6 +157,11 @@ class Instruction:
     def parse_str(cls, source: str):
 
         tokens = lex.tokenize(source)
+        if not isinstance(tokens, lex.TokenStream):
+            error = tokens
+            error.push(Message("Invalid tokens", 0, 0))
+            return error
+        
         return Instruction.parse(tokens)
     
     def __str__(self) -> str:
@@ -174,6 +190,9 @@ class Program:
                     return Traceback([Message(f"Unexpected token after label {words[0].value}: '{words[1].value}'", words[1].line_number, words[1].column_number)], [])
                 program.code.append(Label(str(words[0].value)))
                 continue
+            if words[0].type == lex.TokenType.MACRO:
+                continue
+            
             instruction = Instruction.parse(line)
             if not isinstance(instruction, Instruction):
                 instruction.push(Message(f"Invalid instruction", 0, 0))
@@ -185,6 +204,11 @@ class Program:
     def parse_str(cls, source: str) -> "Program | Traceback":
 
         tokens = lex.tokenize(source)
+        if not isinstance(tokens, lex.TokenStream):
+            error = tokens
+            error.push(Message("Invalid tokens", 0, 0))
+            return error
+        
         return Program.parse(tokens)
     
     def __str__(self) -> str:

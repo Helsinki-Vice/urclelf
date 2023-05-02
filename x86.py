@@ -17,6 +17,8 @@ class Mnemonic(enum.Enum):
     DEC = "dec"
     PUSHAD = "pushad"
     POPAD = "popad"
+    CALL = "call"
+    RETN = "ret"
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0

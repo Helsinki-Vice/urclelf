@@ -1,6 +1,21 @@
-out 1 .label
-nop
-nop
-nop
-.label
+@DEFINE START_CHAR 'A'
+@DEFINE END_CHAR 'z'
+@DEFINE BP r5
+@DEFINE SP r6 //TODO: add actual sp register
+
+mov r1 START_CHAR
+.loop
+    mov r3 r1
+    cal .print
+    inc r1 r1
+    sub r2 r1 END_CHAR
+    dec r2 r2 // Avoid off-by-one error
+    bnz .loop r2
+mov r3 10
+cal .print
 hlt
+
+.print
+    mov BP SP // I know it's not a proper stack frame but it doesn't segfault so who cares
+    out 1 r3
+    ret
