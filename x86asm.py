@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 import struct
 
-from x86 import Register, X86Instruction, Opcode, ModRegRM, AddressingMode, Mnemonic
+from x86 import Register, X86Instruction, Opcode, ModRegRM, AddressingMode, Mnemonic, BRANCH_MNEMONICS
 from error import Traceback, Message
 
 class OperandEncodingFormat(enum.Enum):
@@ -64,13 +64,12 @@ class InstructionEncoding:
         if len(instruction.operands) != len(self.operand_format):
             return None
         
-        mod_reg_rm = None
         mod_field = instruction.addressing_mode
-        if self.opcode.is_immediate():
-            reg_field = self.opcode_extention
-        else:
-            reg_field = None
+        reg_field = None
         rm_field = None
+        if self.opcode.is_immediate():
+            if self.opcode_extention:
+                reg_field = self.opcode_extention
         immediate = bytes()
 
         for operand_index in range(len(instruction.operands)):
@@ -110,18 +109,25 @@ class InstructionEncoding:
                 immediate = struct.pack("I", value)
             else:
                 return None
-        if mod_field is not None and reg_field is not None and rm_field is not None:
-            if isinstance(reg_field, Register):
-                reg_field = reg_field.value.code.value
-            if isinstance(rm_field, Register):
-                rm_field = rm_field.value.code.value
-            if isinstance(reg_field, Label):
-                return
-            if isinstance(rm_field, Label):
-                return
+        if isinstance(reg_field, Register):
+            reg_field = int(reg_field.value.code.value)
+        if isinstance(rm_field, Register):
+            rm_field = int(rm_field.value.code.value)
+        if isinstance(reg_field, Label):
+            return None
+        if isinstance(rm_field, Label):
+            return None
+        if reg_field is not None or rm_field is not None:
+            if reg_field is None:
+                reg_field = 0
+            if rm_field is None:
+                rm_field = 0
             mod_reg_rm = ModRegRM(mod_field, reg_field, rm_field)
+        else:
+            mod_reg_rm = None
         return X86Instruction(None, self.opcode, mod_reg_rm, bytes(), immediate)
 
+#TODO: smaller/better instruction encodings
 INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x00])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding(Opcode(bytes([0x01])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
@@ -130,6 +136,14 @@ INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0x52])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
     InstructionEncoding(Opcode(bytes([0x53])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
     InstructionEncoding(Opcode(bytes([0x54])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x58])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x59])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5a])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5b])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5c])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5d])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5e])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding(Opcode(bytes([0x5f])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
     InstructionEncoding(Opcode(bytes([0x60])), Mnemonic.PUSHAD, 1, []),
     InstructionEncoding(Opcode(bytes([0x61])), Mnemonic.POPAD, 3, []),
     InstructionEncoding(Opcode(bytes([0x68])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
@@ -147,12 +161,17 @@ INSTRUCTION_FORMATS = [
     InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xe8])), Mnemonic.CALL, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0xe9])), Mnemonic.JMP, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0xf7])), Mnemonic.NEG, 3, [OperandEncodingFormat.MODREGRM_RM_FIELD]),
+    InstructionEncoding(Opcode(bytes([0xf7])), Mnemonic.DIV, 6, [OperandEncodingFormat.MODREGRM_RM_FIELD]),
     InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
     InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
     InstructionEncoding(Opcode(bytes([0x0f, 0x84])), Mnemonic.JZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x85])), Mnemonic.JNZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS])
+    InstructionEncoding(Opcode(bytes([0x0f, 0x85])), Mnemonic.JNZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x0f, 0x86])), Mnemonic.JBE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x0f, 0x87])), Mnemonic.JNBE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding(Opcode(bytes([0x0f, 0x8d])), Mnemonic.JGE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS])
 ]
 
 class Program:
@@ -198,7 +217,7 @@ class Program:
                     label_address = label_addresses.get(operand.value.name)
                     if not label_address:
                         return Traceback([], [Message(f"Cannot resolve label '{operand.value.name}'", 0, 0)])
-                    if instruction.mnemonic in [Mnemonic.JMP, Mnemonic.JZ, Mnemonic.JNZ, Mnemonic.CALL]:
+                    if instruction.mnemonic in BRANCH_MNEMONICS and operand_index == 0:
                         operand.value = label_address - instruction_addresses[instruction_index] - instruction_sizes[instruction_index]
                     else:
                         operand.value = label_address
@@ -241,8 +260,14 @@ def encode(instruction: X86ASMInstruction) -> "X86Instruction | Traceback":
     return Traceback([Message(f"Cannot encode instruction '{instruction}'", 0, 0)], [])
 
 def main():
-    pass
-    #print(InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.CMP, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]).encode(X86ASMInstruction(Mnemonic.CMP, [Operand(Register.EBX), Operand(0)], AddressingMode.INDIRECT)))
+    "[1-11101-1-1][11-011-000]"
+    #print(bytes([0b11110111, 0b11011000]).hex())
+    ins = encode(X86ASMInstruction(Mnemonic.DIV, [Operand(Register.EDX)], AddressingMode.INDIRECT))
+    if isinstance(ins, X86Instruction):
+        print(bytes(ins).hex())
+        print(ins.mod_reg_rm)
+    else:
+        print(ins)
 
 if __name__ == "__main__":
     main()

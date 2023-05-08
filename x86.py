@@ -11,6 +11,8 @@ class Mnemonic(enum.Enum):
     JMP = "jmp"
     JNZ = "jnz"
     JZ  = "jz"
+    JBE = "jbe"
+    JNBE = "jnbe"
     CMP = "cmp"
     PUSH = "push"
     INC = "inc"
@@ -18,7 +20,21 @@ class Mnemonic(enum.Enum):
     PUSHAD = "pushad"
     POPAD = "popad"
     CALL = "call"
-    RETN = "ret"
+    RETN = "retn"
+    JGE = "jge"
+    NEG = "neg"
+    POP = "pop"
+    DIV = "div"
+
+BRANCH_MNEMONICS = [
+    Mnemonic.JMP,
+    Mnemonic.JBE,
+    Mnemonic.JNBE,
+    Mnemonic.JGE,
+    Mnemonic.JNZ,
+    Mnemonic.JZ,
+    Mnemonic.CALL
+]
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0
@@ -126,6 +142,9 @@ class ModRegRM:
     def __bytes__(self):
         return bytes([self.mod.value << 6 | self.reg << 3 | self.rm])
     
+    def __str__(self) -> str:
+        return f"[{self.mod.name} {self.reg} {self.rm}]"
+    
 class X86Instruction:
 
     def __init__(self, prefix: "InstructionPrefix | None", opcode: "Opcode | bytes", mod_reg_rm: "ModRegRM | None", displacement: bytes, immediate: bytes):
@@ -136,7 +155,7 @@ class X86Instruction:
         self.sib = bytes()
         self.displacement = displacement
         self.immediate = immediate
-        
+    
     def __bytes__(self):
 
         machine_code = bytes()

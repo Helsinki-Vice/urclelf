@@ -1,21 +1,26 @@
-@DEFINE START_CHAR 'A'
-@DEFINE END_CHAR 'z'
-@DEFINE BP r5
-@DEFINE SP r6 //TODO: add actual sp register
+@DEFINE NUMBER R1
+@DEFINE ZERO_FLAG R2
+@DEFINE CHAR_COUNT R3
+@DEFINE DIGIT R4
 
-mov r1 START_CHAR
-.loop
-    mov r3 r1
-    cal .print
-    inc r1 r1
-    sub r2 r1 END_CHAR
-    dec r2 r2 // Avoid off-by-one error
-    bnz .loop r2
-mov r3 10
-cal .print
-hlt
+MOV NUMBER 420
+MOV CHAR_COUNT 0                    // char_count = 0
+BRP .loop_1 NUMBER                  // if(number < 0) {...
+    NEG NUMBER NUMBER               //     number = -number
+    OUT %TEXT '-'                   //     print('-')
+                                    // }
+.loop_1                             // while(number) {
+    MOD DIGIT NUMBER 10             //     digit = number % 10
+    ADD DIGIT DIGIT '0'             //     digit = ascii(digit)
+    PSH DIGIT                       //     push(digit)
+    DIV NUMBER NUMBER 10            //     number /= 10
+    INC CHAR_COUNT CHAR_COUNT       //     char_count++
+    BNZ .loop_1 NUMBER              // }
 
-.print
-    mov BP SP // I know it's not a proper stack frame but it doesn't segfault so who cares
-    out 1 r3
-    ret
+.loop_2                             // while(char_count)
+    POP DIGIT                       //     digit = pop()
+    OUT %TEXT DIGIT                 //     print(digit)
+    DEC CHAR_COUNT CHAR_COUNT       //     char_count--
+    BNZ .loop_2 CHAR_COUNT          // }
+OUT %TEXT 10                        // print('\n')
+HLT                                 // exit()

@@ -43,18 +43,81 @@ class Mnemonic(enum.Enum):
     HLT = "hlt"
     CPY = "cpy"
     BRC = "brc"
-    BNC = "bnc"
+    MLT = "mlt"
+    DIV = "div"
+    MOD = "mod"
+    BSR = "bsr"
+    BSL = "bsl"
+    SRS = "srs"
+    BSS = "bss"
+    SETE = "sete"
+    SETNE = "setne"
+    SETG = "setg"
+    SETL = "setl"
+    SETGE = "setge"
+    SETLE = "setle"
+    SETC = "setc"
+    SETNC = "setnc"
+    LLOD = "llod"
+    LSTR = "lstr"
+    SDIV = "sdiv"
+    SBRL = "sbrl"
+    SBRG = "sbrg"
+    SSETL = "ssetl"
+    SSETG = "ssetg"
+    SSETLE = "ssetle"
+    SSETGE = "ssetge"
+    ABS = "abs"
+    UMLT = "umlt"
+    IN = "in"
     OUT = "out"
     DW = "dw"
 
     def __str__(self) -> str:
         return self.value
 
+BRANCH_MNEMONICS = [
+    Mnemonic.JMP,
+    Mnemonic.BRZ,
+    Mnemonic.BNZ,
+    Mnemonic.BLE,
+    Mnemonic.BGE,
+    Mnemonic.BRE,
+    Mnemonic.BNE,
+    Mnemonic.BRP,
+    Mnemonic.BRN,
+    Mnemonic.BRC,
+    Mnemonic.CAL
+]
+
+@dataclass
+class PortType:
+    id: int
+    name: str
+
+class Port(enum.Enum):
+    TEXT = PortType(1, "text")
+
+    @classmethod
+    def from_value(cls, value: "int | str"):
+
+        for port in Port:
+            if isinstance(value, str):
+                if port.value.name.lower() == value.lower():
+                    return port
+            else:
+                if port.value.id == value:
+                    return port
+    
+    def __str__(self) -> str:
+        return f"%{self.value.name}"
+
 class OperandType(enum.Enum):
     INTEGER = enum.auto()
     LABEL = enum.auto()
     GENERAL_REGISTER = enum.auto()
     CHARACTER = enum.auto()
+    PORT = enum.auto
 
 @dataclass
 class InstructionFormat:
@@ -89,7 +152,7 @@ class Character:
     def __str__(self) -> str:
         return f"'{self.char}'"
 
-Operand = Union[Label, GeneralRegister, int, RelativeAddress, Character]
+Operand = Union[Label, GeneralRegister, int, RelativeAddress, Character, Port]
 
 class Instruction:
 
@@ -99,9 +162,8 @@ class Instruction:
         self.operands = operands
     
     @classmethod
-    def parse(cls, source: lex.TokenStream) -> "Instruction | Traceback":
+    def parse(cls, words: lex.TokenStream) -> "Instruction | Traceback":
 
-        words = source
         if not words:
             return Traceback([Message("Instruction must not be empty.", 0, 0)], [])
         if not words.tokens[0].value:
@@ -110,28 +172,45 @@ class Instruction:
             mnemonic = Mnemonic(str(words.tokens[0].value).lower())
         except ValueError:
             return Traceback([Message(f"Unknown mnemoric '{words.tokens[0].value}'", 0, 0)], [])
+        
         operands: list[Operand] = []
         for token in words.tokens[1:]:
+
             if token.value is None:
-                return Traceback([Message("Operand must not be empty.", 0, 0)], [])
+                return Traceback([Message("Operand must not be empty.", token.line_number, token.column_number)], [])
+            
             if token.type == lex.TokenType.LABEL:
                 operands.append(Label(str(token.value)))
+            
             elif token.type == lex.TokenType.GENERAL_REGISTER:
                 if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid register number: '{token.value}'", 0, 0)], [])
+                    return Traceback([Message(f"Invalid register number: '{token.value}'", token.line_number, token.column_number)], [])
                 operands.append(GeneralRegister(token.value))
+            
             elif token.type == lex.TokenType.INTEGER:
                 if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid integer: '{token.value}'", 0, 0)], [])
+                    return Traceback([Message(f"Invalid integer: '{token.value}'", token.line_number, token.column_number)], [])
                 operands.append(token.value)
+            
             elif token.type == lex.TokenType.RELATIVE_JUMP:
                 if not isinstance(token.value, int):
-                    return Traceback([Message(f"line {token.line_number}:{token.column_number} - Invalid relative jump: {token.value}", 0, 0)], [])
+                    return Traceback([Message(f"Invalid relative jump: '{token.value}'", token.line_number, token.column_number)], [])
                 operands.append(RelativeAddress(token.value))
+            
             elif token.type == lex.TokenType.CHARACTER:
                 if not isinstance(token.value, str) or not token.value:
-                    return Traceback([Message(f"line {token.line_number}:{token.column_number} - Character: {token.value}", 0, 0)], [])
+                    return Traceback([Message(f"Invalid character: '{token.value}'", token.line_number, token.column_number)], [])
                 operands.append(Character(token.value))
+            
+            elif token.type == lex.TokenType.PORT:
+                if not isinstance(token.value, str) or not token.value:
+                    return Traceback([Message(f"Invalid Port: '{token.value}'", token.line_number, token.column_number)], [])
+                port = Port.from_value(token.value)
+                if port:
+                    operands.append(port)
+                else:
+                    return Traceback([Message(f"Unknown Port: '{token.value}'", token.line_number, token.column_number)], [])
+            
             else:
                 return Traceback([Message(f"Unsupported operand '{token}'", token.line_number, token.column_number)], [])
         
@@ -139,7 +218,7 @@ class Instruction:
     
     def get_jump_target(self):
 
-        if self.mnemonic not in [Mnemonic.JMP, Mnemonic.BNZ, Mnemonic.CAL]:
+        if self.mnemonic not in [Mnemonic.JMP, Mnemonic.BNZ, Mnemonic.CAL, Mnemonic.BRZ, Mnemonic.BRP]:
             return None
         if not self.operands:
             return None
@@ -181,8 +260,10 @@ class Program:
         program = Program()
         for line in source.split_lines():
             words = line.tokens
+
             if not words:
                 continue
+
             if words[0].type == lex.TokenType.LABEL:
                 if not words[0].value:
                     return Traceback([Message(f"Malformed label token has no value (?)", words[0].line_number, words[0].column_number)], [])
@@ -190,13 +271,15 @@ class Program:
                     return Traceback([Message(f"Unexpected token after label {words[0].value}: '{words[1].value}'", words[1].line_number, words[1].column_number)], [])
                 program.code.append(Label(str(words[0].value)))
                 continue
+
             if words[0].type == lex.TokenType.MACRO:
-                continue
+                continue # The lexer already expanded macros
             
             instruction = Instruction.parse(line)
             if not isinstance(instruction, Instruction):
                 instruction.push(Message(f"Invalid instruction", 0, 0))
                 return instruction
+            
             program.code.append(instruction)
         return program
     

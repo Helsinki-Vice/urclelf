@@ -12,6 +12,7 @@ class TokenType(enum.Enum):
     NEWLINE = enum.auto()
     RELATIVE_JUMP = enum.auto()
     MACRO = enum.auto()
+    PORT = enum.auto()
 
 @dataclass
 class Token:
@@ -30,7 +31,8 @@ class Token:
         
         return result
 
-#TODO: better software design
+#TODO:  better software design
+#FIXME: hex and negative literals don't work
 class Lexer:
 
     def __init__(self, source: str) -> None:
@@ -151,11 +153,22 @@ class Lexer:
                         self.advance()
                     else:
                         break
+            
+            elif self.current_char == "%":
+                token_type = TokenType.PORT
+                token_value = ""
+                self.advance()
+                while self.index < len(self.source):
+                    if self.current_char.lower() in "abcdefghijklmnopqrstuvwxyz_":
+                        token_value += self.current_char
+                        self.advance()
+                    else:
+                        break
+            
             else:
                 return Traceback([Message(f"Unexpected '{self.current_char}'", self.line_number, self.column_number)], [])
             token = Token(token_type, token_line_number, token_column_number, token_value)
             self.tokens.append(token)
-
         index = 0
         for line in self.tokens.split_lines():
             if line[0].type == TokenType.MACRO:
@@ -197,8 +210,9 @@ class TokenStream:
             if token.line_number == current_line_number:
                 current_line.append(token)
             else:
-                lines.append(TokenStream(current_line))
-                current_line_number += token.line_number - current_line_number
+                if current_line:
+                    lines.append(TokenStream(current_line))
+                current_line_number = token.line_number
                 current_line = [token]
         if current_line:
             lines.append(TokenStream(current_line))
