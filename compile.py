@@ -1,5 +1,4 @@
 import urcl
-import x86
 import x86asm
 import elf
 from error import Traceback, Message
@@ -54,11 +53,11 @@ def compile_urcl(source: str) -> "Traceback | bytes":
     if not isinstance(result, urcl.Program):
         result.push(Message("Could not parse urcl source", 1, 1))
         return result
-    elf_program = elf.Program(bytes())
-    x86_code = x86asm.Program([], elf_program.entry_point)
+    elf_program = elf.Program(bytes(), 32)
+    x86_code = x86asm.Program([])
     x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0]) # Default return code
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + 1000]) # Setting up stack
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + 1000]) # Setting up stack
+    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + elf_program.stack_size]) # Setting up stack
+    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + elf_program.stack_size]) # Setting up stack
     for instruction in result.code:
 
         if isinstance(instruction, urcl.Label):
@@ -239,7 +238,7 @@ def compile_urcl(source: str) -> "Traceback | bytes":
     
     for instruction in x86_code.code:
         print(instruction)
-    result = x86_code.assemble()
+    result = x86_code.assemble(elf_program.entry_point)
     if isinstance(result, Traceback):
         result.push(Message("Unable to assemble x86 assembly", 0, 0))
         return result

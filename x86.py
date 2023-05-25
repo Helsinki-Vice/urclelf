@@ -2,39 +2,6 @@ import enum
 import struct
 from dataclasses import dataclass
 
-class Mnemonic(enum.Enum):
-    ADD = "add"
-    SUB = "sub"
-    MOV = "mov"
-    INT = "int"
-    NOP = "nop"
-    JMP = "jmp"
-    JNZ = "jnz"
-    JZ  = "jz"
-    JBE = "jbe"
-    JNBE = "jnbe"
-    CMP = "cmp"
-    PUSH = "push"
-    INC = "inc"
-    DEC = "dec"
-    PUSHAD = "pushad"
-    POPAD = "popad"
-    CALL = "call"
-    RETN = "retn"
-    JGE = "jge"
-    NEG = "neg"
-    POP = "pop"
-    DIV = "div"
-
-BRANCH_MNEMONICS = [
-    Mnemonic.JMP,
-    Mnemonic.JBE,
-    Mnemonic.JNBE,
-    Mnemonic.JGE,
-    Mnemonic.JNZ,
-    Mnemonic.JZ,
-    Mnemonic.CALL
-]
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0
@@ -107,17 +74,22 @@ class InstructionPrefix:
 class Opcode:
     
     def __init__(self, value: bytes) -> None:
-        
         self.value = value
-        
+    
+    def get_primary_byte(self):
+
+        if not self.value:
+            raise ValueError()
+        return self.value[-1]
+    
     def is_immediate(self):
-        return bool(self.value[-1] & 0b10000000)
+        return bool(self.get_primary_byte() & 0b10000000)
     
     def get_direction_bit(self):
-        return bool(self.value[-1] & 0b00000010)
+        return bool(self.get_primary_byte() & 0b00000010)
     
     def get_size_bit(self):
-        return bool(self.value[-1] & 0b00000001)
+        return bool(self.get_primary_byte() & 0b00000001)
     
     def get_operand_size(self):
         
@@ -133,7 +105,7 @@ class Opcode:
 
 class ModRegRM:
 
-    def __init__(self, mod: AddressingMode, reg: "RegisterCode | int", rm: "RegisterCode | int") -> None:
+    def __init__(self, mod: AddressingMode, reg: int, rm: int) -> None:
         
         self.mod = mod
         self.reg = reg

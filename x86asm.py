@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 import struct
 
-from x86 import Register, X86Instruction, Opcode, ModRegRM, AddressingMode, Mnemonic, BRANCH_MNEMONICS
+from x86 import Register, X86Instruction, Opcode, ModRegRM, AddressingMode
 from error import Traceback, Message
 
 class OperandEncodingFormat(enum.Enum):
@@ -11,6 +11,41 @@ class OperandEncodingFormat(enum.Enum):
     MODREGRM_RM_FIELD = enum.auto()
     IMMEDIATE_8_BITS = enum.auto()
     IMMEDIATE_32_BITS = enum.auto()
+
+class Mnemonic(enum.Enum):
+    ADD = "add"
+    SUB = "sub"
+    MOV = "mov"
+    INT = "int"
+    NOP = "nop"
+    JMP = "jmp"
+    JNZ = "jnz"
+    JZ  = "jz"
+    JBE = "jbe"
+    JNBE = "jnbe"
+    CMP = "cmp"
+    PUSH = "push"
+    INC = "inc"
+    DEC = "dec"
+    PUSHAD = "pushad"
+    POPAD = "popad"
+    CALL = "call"
+    RETN = "retn"
+    JGE = "jge"
+    NEG = "neg"
+    POP = "pop"
+    DIV = "div"
+
+BRANCH_MNEMONICS = [
+    Mnemonic.JMP,
+    Mnemonic.JBE,
+    Mnemonic.JNBE,
+    Mnemonic.JGE,
+    Mnemonic.JNZ,
+    Mnemonic.JZ,
+    Mnemonic.CALL
+]
+
 
 @dataclass
 class Label:
@@ -176,20 +211,16 @@ INSTRUCTION_FORMATS = [
 
 class Program:
 
-    def __init__(self, code: "list[X86ASMInstruction | Label]", entry_point: int) -> None:
+    def __init__(self, code: "list[X86ASMInstruction | Label]") -> None:
 
         self.code = code
-        self.entry_point = entry_point
-        #self.instruction_addresses: list[int] = []
-        #self.instruction_sizes: list[int] = []
-        #self.current_address = self.entry_point
-
-    def assemble(self):
+    
+    def assemble(self, entry_point: int):
 
         instruction_addresses: list[int] = []
         instruction_sizes: list[int] = []
         label_addresses: dict[str, int] = {}
-        current_address = self.entry_point
+        current_address = entry_point
         machine_code: list[X86Instruction] = []
 
         #first pass: resolve labels
