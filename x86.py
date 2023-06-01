@@ -2,7 +2,6 @@ import enum
 import struct
 from dataclasses import dataclass
 
-
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0
     INDIRECT_WITH_BYTE_DISPLACEMENT = 1
@@ -61,15 +60,20 @@ class Register(enum.Enum):
 
 class InstructionPrefix:
 
-    def __init__(self) -> None:
+    def __init__(self, operand_size_prefix: bool) -> None:
         
         self.prefix = None
         self.address_size_prefix = None
-        self.operand_size_prefix = None
+        self.operand_size_prefix = operand_size_prefix
         self.segment_override = None
     
     def __bytes__(self):
-        return bytes()
+
+        result = bytes()
+        if self.operand_size_prefix:
+            result += bytes([0x66])
+        
+        return result
 
 class Opcode:
     
@@ -116,15 +120,29 @@ class ModRegRM:
     
     def __str__(self) -> str:
         return f"[{self.mod.name} {self.reg} {self.rm}]"
+
+class ScaledIndexByte:
+
+    def __init__(self, scale: int, index: int, base: int) -> None:
+        
+        self.scale = scale
+        self.index = index
+        self.base = base
     
+    def __bytes__(self):
+        return bytes([self.scale << 6 | self.index << 3 | self.base])
+    
+    def __str__(self) -> str:
+        return f"[{self.scale} {self.index} {self.base}]"
+
 class X86Instruction:
 
-    def __init__(self, prefix: "InstructionPrefix | None", opcode: "Opcode | bytes", mod_reg_rm: "ModRegRM | None", displacement: bytes, immediate: bytes):
+    def __init__(self, prefix: "InstructionPrefix | None", opcode: "Opcode | bytes", mod_reg_rm: "ModRegRM | None", sib: "ScaledIndexByte | None", displacement: bytes, immediate: bytes):
         
         self.prefix = prefix
         self.opcode = opcode
         self.mod_reg_rm = mod_reg_rm
-        self.sib = bytes()
+        self.sib = sib
         self.displacement = displacement
         self.immediate = immediate
     
@@ -136,14 +154,9 @@ class X86Instruction:
         machine_code += bytes(self.opcode)
         if self.mod_reg_rm:
             machine_code += bytes(self.mod_reg_rm)
-        machine_code += bytes(self.sib)
+        if self.sib:
+            machine_code += bytes(self.sib)
         machine_code += bytes(self.displacement)
         machine_code += bytes(self.immediate)
 
         return machine_code
-
-class MachineCode:
-
-    def __init__(self) -> None:
-        
-        self.instructions: list[X86Instruction] = []

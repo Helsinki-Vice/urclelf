@@ -272,11 +272,32 @@ class Program:
         self.section_header_count = 4
         self.stack_size = stack_size
         self.entry_point = 0
+        self.symbols: dict[str, int] = {}
+        sections: list[Section] = [
+            Section.null(),
+            Section.section_names([]),
+            Section(
+                name = ".symbtab",
+                data = bytes(),
+                memory_size = 0,
+                type = SectionHeaderType.SYMBOL_TABLE,
+                is_executable = False
+            ),
+            Section(
+                name = ".text",
+                data = text,
+                memory_size = len(text),
+                type = SectionHeaderType.PROGRAM_DATA,
+                is_executable = True
+            )
+        ]
         self.assemble() # hack to calculate entry point
     
-    def assemble(self):
+    def calculate_stack_base_address(self):
+        return self.virtual_address + len(self.text)
+    
+    def assemble(self, use_section_header_table=True):
 
-        use_section_header_table = False
         section_names = Section.section_names([".null", ".shrtrtab", ".symbtab", ".text"])
 
         file_index = ELF_HEADER_SIZE

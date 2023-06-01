@@ -90,6 +90,19 @@ BRANCH_MNEMONICS = [
     Mnemonic.CAL
 ]
 
+class DefinedImmediate(enum.Enum):
+    BITS = "BITS"
+    MINREG = "MINREG"
+    MINHEAP = "MINHEAP"
+    MINSTACK = "MINSTACK"
+    HEAP = "HEAP"
+    MSB = "MSB"
+    SMSB = "SMSB"
+    MAX = "MAX"
+    SMAX = "SMAX"
+    UHALF = "UHALF"
+    LHALF = "LHALF"
+
 @dataclass
 class PortType:
     id: int
@@ -210,6 +223,41 @@ class Instruction:
                     operands.append(port)
                 else:
                     return Traceback([Message(f"Unknown Port: '{token.value}'", token.line_number, token.column_number)], [])
+            
+            elif token.type == lex.TokenType.MACRO:
+                if isinstance(token.value, str):
+                    try:
+                        defined_immediate = DefinedImmediate(token.value.upper())
+                    except ValueError:
+                        defined_immediate = None
+                else:
+                    defined_immediate = None
+                if not defined_immediate:
+                    return Traceback([Message(f"Invalid defined immediate: '{token.value}'", token.line_number, token.column_number)], [])
+                if defined_immediate == DefinedImmediate.BITS:
+                    operands.append(32)
+                elif defined_immediate == DefinedImmediate.MINREG:
+                    operands.append(4)
+                elif defined_immediate == DefinedImmediate.MINHEAP:
+                    operands.append(0) #TODO: implement headers
+                elif defined_immediate == DefinedImmediate.MINSTACK:
+                    operands.append(20)
+                elif defined_immediate == DefinedImmediate.HEAP:
+                    operands.append(0)
+                elif defined_immediate == DefinedImmediate.MSB:
+                    operands.append(2**31)
+                elif defined_immediate == DefinedImmediate.SMSB:
+                    operands.append(2**30)
+                elif defined_immediate == DefinedImmediate.MAX:
+                    operands.append(2**32 - 1)
+                elif defined_immediate == DefinedImmediate.SMAX:
+                    operands.append(2**31 - 1)
+                elif defined_immediate == DefinedImmediate.UHALF:
+                    operands.append((2**16 - 1) << 16)
+                elif defined_immediate == DefinedImmediate.LHALF:
+                    operands.append(2**16)
+                else:
+                    return Traceback([Message(f"Defined immediate: '@{defined_immediate.name}' not yet implemented", token.line_number, token.column_number)], [])
             
             else:
                 return Traceback([Message(f"Unsupported operand '{token}'", token.line_number, token.column_number)], [])

@@ -116,7 +116,7 @@ class Lexer:
                 token_type = TokenType.INTEGER
                 token_value = ""
                 while self.index < len(self.source):
-                    if self.current_char.lower() in "0123456789":
+                    if self.current_char.lower() in "-xboXBO0123456789":
                         token_value += self.current_char
                         self.advance()
                     else:

@@ -45,35 +45,35 @@ def urcl_operand_to_x86(operand: urcl.Operand) -> "x86asm.Operand | None":
         return x86asm.Operand(operand.value.id)
     else:
         return None
-    
-#TODO: fix spagetti
-def compile_urcl(source: str) -> "Traceback | bytes":
 
-    result = urcl.Program.parse_str(source)
-    if not isinstance(result, urcl.Program):
-        result.push(Message("Could not parse urcl source", 1, 1))
-        return result
-    elf_program = elf.Program(bytes(), 32)
-    x86_code = x86asm.Program([])
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0]) # Default return code
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, elf_program.virtual_address + elf_program.stack_size]) # Setting up stack
-    x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, elf_program.virtual_address + elf_program.stack_size]) # Setting up stack
-    for instruction in result.code:
+#TODO: fix spagetti
+def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base_pointer: int) -> "Traceback | bytes":
+
+    parsed_urcl = urcl.Program.parse_str(source)
+    if not isinstance(parsed_urcl, urcl.Program):
+        error = parsed_urcl
+        error.push(Message("Could not parse urcl source", 1, 1))
+        return error
+    x86_assembly_code = x86asm.Program(entry_point, [])
+    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0]) # Default return code
+    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, stack_base_pointer]) # Setting up stack
+    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, stack_base_pointer]) # Setting up stack
+    for instruction in parsed_urcl.code:
 
         if isinstance(instruction, urcl.Label):
-            x86_code.code.append(x86asm.Label(instruction.name))
+            x86_assembly_code.code.append(x86asm.Label(instruction.name))
             continue
 
         if instruction.mnemonic in [urcl.Mnemonic.HLT, urcl.Mnemonic.NOP, urcl.Mnemonic.RET]:
             if len(instruction.operands) != 0:
                 return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 0.", 0, 0)], [])
             if instruction.mnemonic == urcl.Mnemonic.HLT:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 1])
-                x86_code.add_instruction(x86asm.Mnemonic.INT, [0x80])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 1])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.INT, [0x80])
             elif instruction.mnemonic == urcl.Mnemonic.NOP:
-                x86_code.add_instruction(x86asm.Mnemonic.NOP, [])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.NOP, [])
             elif instruction.mnemonic == urcl.Mnemonic.RET:
-                x86_code.add_instruction(x86asm.Mnemonic.RETN, [])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.RETN, [])
             else:
                 return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", 0, 0)], [])
          
@@ -87,15 +87,15 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             if source_operand is None:
                 continue
             if instruction.operands[0] != instruction.operands[1]:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_operand.value])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_operand.value])
             if instruction.mnemonic == urcl.Mnemonic.MOV:
                 pass
             elif instruction.mnemonic == urcl.Mnemonic.INC:
-                x86_code.add_instruction(x86asm.Mnemonic.ADD, [destination, 1])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.ADD, [destination, 1])
             elif instruction.mnemonic == urcl.Mnemonic.DEC:
-                x86_code.add_instruction(x86asm.Mnemonic.SUB, [destination, 1])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.SUB, [destination, 1])
             elif instruction.mnemonic == urcl.Mnemonic.NEG:
-                x86_code.add_instruction(x86asm.Mnemonic.NEG, [destination])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.NEG, [destination])
             else:
                 return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", 0, 0)], [])
         
@@ -112,11 +112,11 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             if source_2 is None:
                 continue
             if instruction.operands[0] != instruction.operands[1]:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_1.value])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_1.value])
             if instruction.mnemonic == urcl.Mnemonic.ADD:
-                x86_code.add_instruction(x86asm.Mnemonic.ADD, [destination, source_2.value])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.ADD, [destination, source_2.value])
             elif instruction.mnemonic == urcl.Mnemonic.SUB:
-                x86_code.add_instruction(x86asm.Mnemonic.SUB, [destination, source_2.value])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.SUB, [destination, source_2.value])
             else:
                 return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", 0, 0)], [])
         
@@ -126,9 +126,9 @@ def compile_urcl(source: str) -> "Traceback | bytes":
                 return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.name.upper()} instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
             if isinstance(destination_operand, urcl.Label):
                 if instruction.mnemonic == urcl.Mnemonic.JMP:
-                    x86_code.add_instruction(x86asm.Mnemonic.JMP, [x86asm.Label(destination_operand.name)])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.JMP, [x86asm.Label(destination_operand.name)])
                 elif instruction.mnemonic == urcl.Mnemonic.CAL:
-                    x86_code.add_instruction(x86asm.Mnemonic.CALL, [x86asm.Label(destination_operand.name)])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.CALL, [x86asm.Label(destination_operand.name)])
                 else:
                     return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", 0, 0)], [])
             else:
@@ -143,14 +143,14 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             source_operand = urcl_operand_to_x86(instruction.operands[1])
             if not source_operand is not None:
                 continue
-            x86_code.add_instruction(x86asm.Mnemonic.CMP, [source_operand.value, 0])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.CMP, [source_operand.value, 0])
             if isinstance(destination_operand, urcl.Label):
                 if instruction.mnemonic == urcl.Mnemonic.BNZ:
-                    x86_code.add_instruction(x86asm.Mnemonic.JNZ, [x86asm.Label(destination_operand.name)])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.JNZ, [x86asm.Label(destination_operand.name)])
                 elif instruction.mnemonic == urcl.Mnemonic.BRZ:
-                    x86_code.add_instruction(x86asm.Mnemonic.JZ, [x86asm.Label(destination_operand.name)])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.JZ, [x86asm.Label(destination_operand.name)])
                 elif instruction.mnemonic == urcl.Mnemonic.BRP:
-                    x86_code.add_instruction(x86asm.Mnemonic.JGE, [x86asm.Label(destination_operand.name)])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.JGE, [x86asm.Label(destination_operand.name)])
                 else:
                     return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", 0, 0)], [])
         #TODO: smaller translations
@@ -170,30 +170,29 @@ def compile_urcl(source: str) -> "Traceback | bytes":
                 continue
             #if not isinstance(instruction.operands[1], int):
             #    return Traceback([Message(f"OUT instruction operand 2 is of incorrect type (expected int).", 0, 0)], [])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EAX])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EBX])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.ECX])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EDX])
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [source_operand.value])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 4])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 1])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ECX, x86asm.Register.ESP])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EDX, 1])
-            x86_code.add_instruction(x86asm.Mnemonic.INT, [0x80])
-            x86_code.add_instruction(x86asm.Mnemonic.ADD, [x86asm.Register.ESP, 0x04])
-            x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EDX])
-            x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.ECX])
-            x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EBX])
-            x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EAX])
-            #x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, x86asm.Register.EBP])
-        
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EAX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EBX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.ECX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EDX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [source_operand.value])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 4])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 1])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ECX, x86asm.Register.ESP])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EDX, 1])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.INT, [0x80])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.ADD, [x86asm.Register.ESP, 0x4])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EDX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.ECX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EBX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EAX])
+            
         elif instruction.mnemonic in [urcl.Mnemonic.PSH]:
             if len(instruction.operands) != 1:
                 return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 1.", 0, 0)], [])
             source_operand = urcl_operand_to_x86(instruction.operands[0])
             if source_operand is None:
                 continue
-            x86_code.add_instruction(x86asm.Mnemonic.PUSH, [source_operand.value])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [source_operand.value])
         
         elif instruction.mnemonic in [urcl.Mnemonic.POP]:
             if len(instruction.operands) != 1:
@@ -204,7 +203,7 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             x86_register = urcl_operand_to_x86(urcl_register)
             if x86_register is None:
                 continue
-            x86_code.add_instruction(x86asm.Mnemonic.POP, [x86_register.value])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [x86_register.value])
             
         elif instruction.mnemonic in [urcl.Mnemonic.DIV, urcl.Mnemonic.MOD]:
             if len(instruction.operands) != 3:
@@ -221,38 +220,52 @@ def compile_urcl(source: str) -> "Traceback | bytes":
             temp_regs: list[x86asm.Register] = []
             for reg in [x86asm.Register.EAX, x86asm.Register.EBX, x86asm.Register.EDX]:
                 if reg != destination:
-                    x86_code.add_instruction(x86asm.Mnemonic.PUSH, [reg])
+                    x86_assembly_code.add_instruction(x86asm.Mnemonic.PUSH, [reg])
                     temp_regs.append(reg)
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, source_1.value])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EDX, 0])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, source_2.value])
-            x86_code.add_instruction(x86asm.Mnemonic.DIV, [x86asm.Register.EBX])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, source_1.value])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EDX, 0])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, source_2.value])
+            x86_assembly_code.add_instruction(x86asm.Mnemonic.DIV, [x86asm.Register.EBX])
             if instruction.mnemonic == urcl.Mnemonic.DIV:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EAX])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EAX])
             else:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EDX])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EDX])
             for reg in temp_regs.__reversed__():
-                x86_code.add_instruction(x86asm.Mnemonic.POP, [reg])
+                x86_assembly_code.add_instruction(x86asm.Mnemonic.POP, [reg])
         else:
             return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", 0, 0)], [])
     
-    for instruction in x86_code.code:
-        print(instruction)
-    result = x86_code.assemble(elf_program.entry_point)
-    if isinstance(result, Traceback):
-        result.push(Message("Unable to assemble x86 assembly", 0, 0))
-        return result
+    assembled_x86 = x86_assembly_code.assemble()
+    if isinstance(assembled_x86, Traceback):
+        error = assembled_x86
+        error.push(Message("Unable to assemble x86 assembly", 0, 0))
+        return error
     machine_code = bytes()
-    for instruction in result:
+    for instruction in assembled_x86:
         machine_code += bytes(instruction)
-    print(machine_code.hex())
-    elf_program.text = machine_code
-    return bytes(elf_program.assemble())
+    
+    return machine_code
+
+def compile_urcl_to_executable(source: str):
+    
+    first_pass_binary = compile_urcl_source_to_flat_binary(source, 0, 0)
+    if isinstance(first_pass_binary, Traceback):
+        error = first_pass_binary
+        error.push(Message("Unable to assemble x86 assembly", 0, 0))
+        return error
+    first_pass_executable = elf.Program(first_pass_binary, 20)
+    second_pass_binary = compile_urcl_source_to_flat_binary(source, first_pass_executable.entry_point, first_pass_executable.calculate_stack_base_address())
+    if isinstance(second_pass_binary, Traceback):
+        error = second_pass_binary
+        error.push(Message("Unable to assemble x86 assembly (Unreachable error?!)", 0, 0))
+        return error
+    
+    return bytes(elf.Program(second_pass_binary, 20).assemble())
 
 def main():
     with open("./source.urcl", "r") as file:
         source = file.read()
-    result = compile_urcl(source)
+    result = compile_urcl_to_executable(source)
     #result = bytes(elf.Program(b"").assemble())
     if not isinstance(result, bytes):
         print(f"compile failed:\n{result}")
