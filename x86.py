@@ -1,6 +1,12 @@
+"This module provides types for representing and emitting x86 machine code"
 import enum
 import struct
 from dataclasses import dataclass
+
+# Links
+# http://www.c-jump.com/CIS77/CPU/x86/lecture.html
+# https://defuse.ca/online-x86-assembler.htm#disassembly
+# http://ref.x86asm.net/coder32.html
 
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0
@@ -8,56 +14,46 @@ class AddressingMode(enum.IntEnum):
     INDIRECT_WITH_FOUR_BYTE_DISPACEMENT = 2
     DIRECT = 3
 
-class RegisterCode(enum.IntEnum):
-    AL_AX_EAX = 0
-    CL_CX_ECX = 1
-    DL_DX_EDX = 2
-    BL_BX_EBX = 3
-    AH_SP_ESP = 4
-    CH_BP_EBP = 5
-    DH_SI_ESI = 6
-    BH_DI_EDI = 7
-
+@dataclass
 class RegisterType:
 
-    def __init__(self, name: str, code: RegisterCode, size: int) -> None:
+    name: str
+    code: int
+    size: int
         
-        self.name = name
-        self.code = code
-        self.size = size
-    
     def __str__(self) -> str:
         return self.name
 
 class Register(enum.Enum):
-    AL = RegisterType("al", RegisterCode.AL_AX_EAX, 8)
-    AX = RegisterType("ax", RegisterCode.AL_AX_EAX, 16)
-    EAX = RegisterType("eax", RegisterCode.AL_AX_EAX, 32)
-    BL = RegisterType("bl", RegisterCode.BL_BX_EBX, 8)
-    BX = RegisterType("bx", RegisterCode.BL_BX_EBX, 16)
-    EBX = RegisterType("ebx", RegisterCode.BL_BX_EBX, 32)
-    CL = RegisterType("cl", RegisterCode.CL_CX_ECX, 8)
-    CX = RegisterType("cx", RegisterCode.CL_CX_ECX, 16)
-    ECX = RegisterType("ecx", RegisterCode.CL_CX_ECX, 32)
-    DL = RegisterType("dl", RegisterCode.DL_DX_EDX, 8)
-    DX = RegisterType("dx", RegisterCode.DL_DX_EDX, 16)
-    EDX = RegisterType("edx", RegisterCode.DL_DX_EDX, 32)
-    AH = RegisterType("ah", RegisterCode.AH_SP_ESP, 8)
-    SP = RegisterType("sp", RegisterCode.AH_SP_ESP, 16)
-    ESP = RegisterType("esp", RegisterCode.AH_SP_ESP, 32)
-    CH = RegisterType("ch", RegisterCode.CH_BP_EBP, 8)
-    BP = RegisterType("bp", RegisterCode.CH_BP_EBP, 16)
-    EBP = RegisterType("ebp", RegisterCode.CH_BP_EBP, 32)
-    DH = RegisterType("dh", RegisterCode.DH_SI_ESI, 8)
-    SI = RegisterType("si", RegisterCode.DH_SI_ESI, 16)
-    ESI = RegisterType("esi", RegisterCode.DH_SI_ESI, 32)
-    BH = RegisterType("bh", RegisterCode.BH_DI_EDI, 8)
-    DI = RegisterType("di", RegisterCode.BH_DI_EDI, 16)
-    EDI = RegisterType("edi", RegisterCode.BH_DI_EDI, 32)
+    AL = RegisterType("al", 0, 8)
+    AX = RegisterType("ax", 0, 16)
+    EAX = RegisterType("eax", 0, 32)
+    BL = RegisterType("bl", 3, 8)
+    BX = RegisterType("bx", 3, 16)
+    EBX = RegisterType("ebx", 3, 32)
+    CL = RegisterType("cl", 1, 8)
+    CX = RegisterType("cx", 1, 16)
+    ECX = RegisterType("ecx", 1, 32)
+    DL = RegisterType("dl", 2, 8)
+    DX = RegisterType("dx", 2, 16)
+    EDX = RegisterType("edx", 2, 32)
+    AH = RegisterType("ah", 4, 8)
+    SP = RegisterType("sp", 4, 16)
+    ESP = RegisterType("esp", 4, 32)
+    CH = RegisterType("ch", 5, 8)
+    BP = RegisterType("bp", 5, 16)
+    EBP = RegisterType("ebp", 5, 32)
+    DH = RegisterType("dh", 6, 8)
+    SI = RegisterType("si", 6, 16)
+    ESI = RegisterType("esi", 6, 32)
+    BH = RegisterType("bh", 7, 8)
+    DI = RegisterType("di", 7, 16)
+    EDI = RegisterType("edi", 7, 32)
 
     def __str__(self):
         return str(self.value)
 
+# Unused for now
 class InstructionPrefix:
 
     def __init__(self, operand_size_prefix: bool) -> None:

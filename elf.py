@@ -264,7 +264,7 @@ class SymbolTableEntry:
 
 class Program:
 
-    def __init__(self, text: bytes, stack_size: int) -> None:
+    def __init__(self, text: bytes, stack_size: int, use_section_header_table=True) -> None:
         
         self.text = text
         self.virtual_address = 0x10000
@@ -291,10 +291,10 @@ class Program:
                 is_executable = True
             )
         ]
-        self.assemble() # hack to calculate entry point
+        self.assemble(use_section_header_table) # hack to calculate entry point
     
     def calculate_stack_base_address(self):
-        return self.virtual_address + len(self.text)
+        return self.entry_point + len(self.text)
     
     def assemble(self, use_section_header_table=True):
 

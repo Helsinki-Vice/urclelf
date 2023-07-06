@@ -1,3 +1,4 @@
+"This module provides types for respresenting x86 assembly and uses the x86 module to convert ASM to x86 machine code."
 import enum
 from dataclasses import dataclass
 import struct
@@ -14,27 +15,37 @@ class OperandEncodingFormat(enum.Enum):
 
 class Mnemonic(enum.Enum):
     ADD = "add"
-    SUB = "sub"
-    MOV = "mov"
+    AND = "and"
+    CALL = "call"
+    CMP = "cmp"
+    DEC = "dec"
+    DIV = "div"
+    IDIV = "idiv"
+    INC = "inc"
+    IMUL = "imul"
     INT = "int"
-    NOP = "nop"
+    JBE = "jbe"
+    JGE = "jge"
     JMP = "jmp"
     JNZ = "jnz"
-    JZ  = "jz"
-    JBE = "jbe"
     JNBE = "jnbe"
-    CMP = "cmp"
-    PUSH = "push"
-    INC = "inc"
-    DEC = "dec"
-    PUSHAD = "pushad"
-    POPAD = "popad"
-    CALL = "call"
-    RETN = "retn"
-    JGE = "jge"
+    JO = "jo"
+    JZ  = "jz"
     NEG = "neg"
+    NOP = "nop"
+    NOT = "not"
+    MOV = "mov"
+    MUL = "mul"
+    OR = "or"
     POP = "pop"
-    DIV = "div"
+    POPAD = "popad"
+    PUSH = "push"
+    PUSHAD = "pushad"
+    RETN = "retn"
+    ROL = "rol"
+    ROR = "ror"
+    SUB = "sub"
+    XOR = "xor"
 
 BRANCH_MNEMONICS = [
     Mnemonic.JMP,
@@ -85,26 +96,35 @@ class X86ASMInstruction:
         return f"{self.mnemonic.value} {operands}"
 
 @dataclass
-class InstructionEncoding:
+class InstructionEncoding: #FIXME: Hacks all around!
 
-    opcode: Opcode
-    mnemonic: Mnemonic
-    opcode_extention: int
+    opcodes: list[Opcode]
+    mnemonics: "Mnemonic | tuple[Mnemonic, Mnemonic, Mnemonic, Mnemonic, Mnemonic, Mnemonic, Mnemonic, Mnemonic]"
     operand_format: list[OperandEncodingFormat]
 
     def encode(self, instruction: X86ASMInstruction) -> "X86Instruction | None":
 
-        if instruction.mnemonic != self.mnemonic:
+        if not self.opcodes:
             return None
+        if isinstance(self.mnemonics, Mnemonic):
+            if instruction.mnemonic != self.mnemonics:
+                return None
+            opcode_extention = 0
+        else:
+            try:
+                opcode_extention = self.mnemonics.index(instruction.mnemonic)
+            except ValueError:
+                return None
         if len(instruction.operands) != len(self.operand_format):
             return None
         
+        opcode = self.opcodes[0]
         mod_field = instruction.addressing_mode
         reg_field = None
         rm_field = None
-        if self.opcode.is_immediate():
-            if self.opcode_extention:
-                reg_field = self.opcode_extention
+        if self.opcodes[0].is_immediate():
+            if opcode_extention:
+                reg_field = opcode_extention
         immediate = bytes()
         for operand_index in range(len(instruction.operands)):
             format = self.operand_format[operand_index]
@@ -112,14 +132,13 @@ class InstructionEncoding:
             if format == OperandEncodingFormat.OPCODE:
                 if not isinstance(operand.value, Register):
                     return None
-                if operand.value.value.code != self.opcode.value[-1] & 0b00000111:
-                    return None
+                opcode = Opcode(bytes([(self.opcodes[0].get_primary_byte() & 0b11111000) | (operand.value.value.code)]))
             elif format == OperandEncodingFormat.MODREGRM_REGISTER_FIELD:
-                if operand.get_register_size() != self.opcode.get_operand_size():
+                if operand.get_register_size() != self.opcodes[0].get_operand_size():
                     return None
                 reg_field = operand.value
             elif format == OperandEncodingFormat.MODREGRM_RM_FIELD:
-                if operand.get_register_size() != self.opcode.get_operand_size():
+                if operand.get_register_size() != self.opcodes[0].get_operand_size():
                     return None
                 rm_field = operand.value
             elif format == OperandEncodingFormat.IMMEDIATE_32_BITS:
@@ -146,9 +165,9 @@ class InstructionEncoding:
             else:
                 return None
         if isinstance(reg_field, Register):
-            reg_field = int(reg_field.value.code.value)
+            reg_field = int(reg_field.value.code)
         if isinstance(rm_field, Register):
-            rm_field = int(rm_field.value.code.value)
+            rm_field = int(rm_field.value.code)
         if isinstance(reg_field, Label):
             return None
         if isinstance(rm_field, Label):
@@ -161,54 +180,40 @@ class InstructionEncoding:
             mod_reg_rm = ModRegRM(mod_field, reg_field, rm_field)
         else:
             mod_reg_rm = None
-        return X86Instruction(None, self.opcode, mod_reg_rm, None, bytes(), immediate)
+        return X86Instruction(None, opcode, mod_reg_rm, None, bytes(), immediate)
 
 #TODO: smaller/better instruction encodings
+#this ungody array does all the legwork
 INSTRUCTION_FORMATS = [
-    InstructionEncoding(Opcode(bytes([0x00])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
-    InstructionEncoding(Opcode(bytes([0x01])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
-    InstructionEncoding(Opcode(bytes([0x50])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x51])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x52])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x53])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x54])), Mnemonic.PUSH, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x58])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x59])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5a])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5b])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5c])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5d])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5e])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x5f])), Mnemonic.POP, 0, [OperandEncodingFormat.OPCODE]),
-    InstructionEncoding(Opcode(bytes([0x60])), Mnemonic.PUSHAD, 1, []),
-    InstructionEncoding(Opcode(bytes([0x61])), Mnemonic.POPAD, 3, []),
-    InstructionEncoding(Opcode(bytes([0x68])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x6a])), Mnemonic.PUSH, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0x80])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.CMP, 7, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.ADD, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x81])), Mnemonic.SUB, 5, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x83])), Mnemonic.SUB, 5, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0x88])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
-    InstructionEncoding(Opcode(bytes([0x89])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
-    InstructionEncoding(Opcode(bytes([0x90])), Mnemonic.NOP, 0, []),
-    InstructionEncoding(Opcode(bytes([0xc3])), Mnemonic.RETN, 0, []),
-    InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0xc7])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0xcd])), Mnemonic.INT, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0xe8])), Mnemonic.CALL, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0xe9])), Mnemonic.JMP, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0xf7])), Mnemonic.NEG, 3, [OperandEncodingFormat.MODREGRM_RM_FIELD]),
-    InstructionEncoding(Opcode(bytes([0xf7])), Mnemonic.DIV, 6, [OperandEncodingFormat.MODREGRM_RM_FIELD]),
-    InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0xfe])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
-    InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.INC, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0xff])), Mnemonic.DEC, 1, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x84])), Mnemonic.JZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x85])), Mnemonic.JNZ, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x86])), Mnemonic.JBE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x87])), Mnemonic.JNBE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
-    InstructionEncoding(Opcode(bytes([0x0f, 0x8d])), Mnemonic.JGE, 0, [OperandEncodingFormat.IMMEDIATE_32_BITS])
+    InstructionEncoding([Opcode(bytes([0x00]))], Mnemonic.ADD, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x01]))], Mnemonic.ADD, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x40]))], Mnemonic.INC, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding([Opcode(bytes([0x48]))], Mnemonic.DEC, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding([Opcode(bytes([0x50]))], Mnemonic.PUSH, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding([Opcode(bytes([0x58]))], Mnemonic.POP, [OperandEncodingFormat.OPCODE]),
+    InstructionEncoding([Opcode(bytes([0x60]))], Mnemonic.PUSHAD, []),
+    InstructionEncoding([Opcode(bytes([0x61]))], Mnemonic.POPAD, []),
+    InstructionEncoding([Opcode(bytes([0x68]))], Mnemonic.PUSH, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    #InstructionEncoding([Opcode(bytes([0x6a]))], Mnemonic.PUSH, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding([Opcode(bytes([0x80]))], (Mnemonic.ADD, Mnemonic.OR, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.AND, Mnemonic.SUB, Mnemonic.XOR, Mnemonic.CMP), [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding([Opcode(bytes([0x81]))], (Mnemonic.ADD, Mnemonic.OR, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.AND, Mnemonic.SUB, Mnemonic.XOR, Mnemonic.CMP), [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0x88]))], Mnemonic.MOV, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x89]))], Mnemonic.MOV, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x90]))], Mnemonic.NOP, []),
+    InstructionEncoding([Opcode(bytes([0xc3]))], Mnemonic.RETN, []),
+    InstructionEncoding([Opcode(bytes([0xc6]))], Mnemonic.MOV, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding([Opcode(bytes([0xc7]))], Mnemonic.MOV, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0xcd]))], Mnemonic.INT, [OperandEncodingFormat.IMMEDIATE_8_BITS]),
+    InstructionEncoding([Opcode(bytes([0xe8]))], Mnemonic.CALL, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0xe9]))], Mnemonic.JMP, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0xf7]))], (Mnemonic.NOP, Mnemonic.NOP, Mnemonic.NOT, Mnemonic.NEG, Mnemonic.MUL, Mnemonic.IMUL, Mnemonic.DIV, Mnemonic.IDIV), [OperandEncodingFormat.MODREGRM_RM_FIELD]),
+    InstructionEncoding([Opcode(bytes([0xfe]))], (Mnemonic.DEC, Mnemonic.INC, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.NOP, Mnemonic.NOP), [OperandEncodingFormat.MODREGRM_RM_FIELD]),
+    InstructionEncoding([Opcode(bytes([0xff]))], (Mnemonic.INC, Mnemonic.DEC, Mnemonic.CALL, Mnemonic.NOP, Mnemonic.JMP, Mnemonic.NOP, Mnemonic.PUSH, Mnemonic.NOP), [OperandEncodingFormat.MODREGRM_RM_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x0f, 0x84]))], Mnemonic.JZ, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0x0f, 0x85]))], Mnemonic.JNZ, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0x0f, 0x86]))], Mnemonic.JBE, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0x0f, 0x87]))], Mnemonic.JNBE, [OperandEncodingFormat.IMMEDIATE_32_BITS]),
+    InstructionEncoding([Opcode(bytes([0x0f, 0x8d]))], Mnemonic.JGE, [OperandEncodingFormat.IMMEDIATE_32_BITS])
 ]
 
 class Program:
@@ -235,7 +240,7 @@ class Program:
                 continue
             machine_instruction = encode(instruction)
             if not isinstance(machine_instruction, X86Instruction):
-                machine_instruction.push(Message(f"Unable to encode instruction '{instruction}'", 0, 0))
+                machine_instruction.elaborate(f"Unable to encode instruction '{instruction}'")
                 return machine_instruction
             machine_code_bytes = bytes(machine_instruction)
             instruction_addresses.append(current_address)
@@ -257,7 +262,7 @@ class Program:
                         operand.value = label_address
             machine_instruction = encode(instruction)
             if not isinstance(machine_instruction, X86Instruction):
-                machine_instruction.push(Message(f"Unable to encode instruction '{instruction}'", 0, 0))
+                machine_instruction.elaborate(f"Unable to encode instruction '{instruction}'")
                 return machine_instruction
             machine_code_bytes = bytes(machine_instruction)
             instruction_addresses.append(current_address)
@@ -303,7 +308,7 @@ def main():
     "[1-11101-1-1][11-011-000]"
     #print(bytes([0b11110111, 0b11011000]).hex())
     print(Opcode(bytes([0xc6])).get_operand_size())
-    ins = InstructionEncoding(Opcode(bytes([0xc6])), Mnemonic.MOV, 0, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.IMMEDIATE_8_BITS]).encode(X86ASMInstruction(Mnemonic.MOV, [Operand(Register.DL), Operand(-128)], AddressingMode.DIRECT))
+    ins = InstructionEncoding([Opcode(bytes([0x40]))], Mnemonic.INC, [OperandEncodingFormat.OPCODE]).encode(X86ASMInstruction(Mnemonic.INC, [Operand(Register.EAX)], AddressingMode.DIRECT))
     if isinstance(ins, X86Instruction):
         print(bytes(ins).hex())
         print(ins.mod_reg_rm)

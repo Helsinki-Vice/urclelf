@@ -2,7 +2,7 @@
 @DEFINE CHAR_COUNT R2
 @DEFINE DIGIT R3
 
-MOV NUMBER 55
+MOV NUMBER @UHALF
 MOV CHAR_COUNT 0                    // char_count = 0
 BRP .loop_1 NUMBER                  // if(number < 0) {...
     NEG NUMBER NUMBER               //     number = -number

@@ -1,3 +1,4 @@
+"This module defines types for representing parsing/compilation errors"
 from dataclasses import dataclass
 
 @dataclass
@@ -11,8 +12,12 @@ class Traceback:
     errors: list[Message]
     warnings: list[Message]
 
-    def push(self, error_message: Message):
-        self.errors.insert(0, error_message)
+    def elaborate(self, message: str, line_number=0, column_number=1):
+
+        if not line_number:
+            line_number = self.errors[-1].line
+            column_number = self.errors[-1].column
+        self.errors.insert(0, Message(message, line_number, column_number))
     
     def warn(self, message: Message):
         self.warnings.append(message)
@@ -23,7 +28,7 @@ class Traceback:
         for warning in self.warnings:
             lines.append(f"WARNING: {warning.message}")
         
-        lines.append("TRACEBACK (most recent call last)")
+        lines.append("TRACEBACK")
         for indent, error in enumerate(self.errors):
             lines.append(f"{error.line}:{error.column} " + "    " * (indent - 1) + "+-->" * (indent > 0) + f"{error.message}")
         
