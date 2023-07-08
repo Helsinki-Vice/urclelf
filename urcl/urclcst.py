@@ -18,7 +18,7 @@ class OperandType(enum.Enum):
 
 @dataclass
 class OperandCSTNode:
-    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, Port, DefinedImmediate, list[Self]]
+    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, Port, DefinedImmediate, str]
     line_number: int
     column_number: int
 
@@ -154,6 +154,11 @@ class InstructionCSTNode:
                     return Traceback([Message(f"Invalid character: '{token.value}'", token.line_number, token.column_number)], [])
                 operands.append(OperandCSTNode(Character(token.value), token.line_number, token.column_number))
             
+            elif token.type == urcl.lex.TokenType.STRING:
+                if not isinstance(token.value, str) or not token.value:
+                    return Traceback([Message(f"Invalid string: '{token.value}'", token.line_number, token.column_number)], [])
+                operands.append(OperandCSTNode(token.value, token.line_number, token.column_number))
+            
             elif token.type == urcl.lex.TokenType.PORT:
                 if not isinstance(token.value, str) or not token.value:
                     return Traceback([Message(f"Invalid Port: '{token.value}'", token.line_number, token.column_number)], [])
@@ -273,18 +278,18 @@ class CST:
                     return Traceback([Message(f"Expected identifier, found {words[1].type.value}", words[1].line_number, words[1].column_number)], [])
                 macros.update({str(words[1].value): words[2:]})
                 continue
-            pee_pee: list[urcl.lex.Token] = []
-            for blah in words:
-                if blah.type == urcl.lex.TokenType.IDENTIFIER:
-                    poo = macros.get(str(blah.value))
-                    if poo:
-                        for turd in poo:
-                            pee_pee.append(urcl.lex.Token(turd.type, blah.line_number, blah.column_number, turd.value))
+            result_tokens: list[urcl.lex.Token] = []
+            for token in words:
+                if token.type == urcl.lex.TokenType.IDENTIFIER:
+                    macro_value = macros.get(str(token.value))
+                    if macro_value:
+                        for macro_token in macro_value:
+                            result_tokens.append(urcl.lex.Token(macro_token.type, token.line_number, token.column_number, macro_token.value))
                     else:
-                        pee_pee.append(blah)
+                        result_tokens.append(token)
                 else:
-                    pee_pee.append(blah)
-            instruction = InstructionCSTNode.parse(urcl.lex.TokenStream(pee_pee))
+                    result_tokens.append(token)
+            instruction = InstructionCSTNode.parse(urcl.lex.TokenStream(result_tokens))
             if not isinstance(instruction, InstructionCSTNode):
                 instruction.elaborate("Invalid instruction")
                 return instruction

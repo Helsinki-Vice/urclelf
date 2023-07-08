@@ -1,9 +1,9 @@
 import urcl
-import compile
+from compile import compile_urcl_to_executable
 
 with open("./source.urcl", "r") as file:
     #p = urcl.parse(file.read())
-    p = compile.compile_urcl_to_executable(file.read())
+    p = compile_urcl_to_executable(file.read())
     if not isinstance(p, bytes):
         print(p)
     else:

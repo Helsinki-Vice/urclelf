@@ -278,6 +278,28 @@ class Program:
         for operand in operands:
             instruction.operands.append(Operand(operand))
         self.code.append(instruction)
+    
+    #TODO: get pushad/popad instructions working
+    def add_instructions_to_save_general_registers(self):
+        self.add_instruction(Mnemonic.PUSH, [Register.EAX])
+        self.add_instruction(Mnemonic.PUSH, [Register.EBX])
+        self.add_instruction(Mnemonic.PUSH, [Register.ECX])
+        self.add_instruction(Mnemonic.PUSH, [Register.EDX])
+            
+    def add_instructions_to_restore_general_registers(self):
+        self.add_instruction(Mnemonic.POP, [Register.EDX])
+        self.add_instruction(Mnemonic.POP, [Register.ECX])
+        self.add_instruction(Mnemonic.POP, [Register.EBX])
+        self.add_instruction(Mnemonic.POP, [Register.EAX])
+    
+    def add_fwrite_linux_syscall(self, char_pointer: int | Register | Label, size: int | Register | Label, file_descriptor: int | Register | Label):
+        self.add_instruction(Mnemonic.MOV, [Register.EAX, 4])
+        self.add_instruction(Mnemonic.MOV, [Register.EBX, 1])
+        self.add_instruction(Mnemonic.MOV, [Register.ECX, char_pointer])
+        self.add_instruction(Mnemonic.MOV, [Register.EDX, size])
+        self.add_instruction(Mnemonic.INT, [0x80])
+        
+            
     """
     def resolve_labels(self):
 
