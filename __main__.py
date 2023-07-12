@@ -1,7 +1,9 @@
+import subprocess
+
 import urcl
 from compile import compile_urcl_to_executable
 
-with open("./source.urcl", "r") as file:
+with open("./programs/print_squares.urcl", "r") as file:
     #p = urcl.parse(file.read())
     p = compile_urcl_to_executable(file.read())
     if not isinstance(p, bytes):
@@ -9,3 +11,4 @@ with open("./source.urcl", "r") as file:
     else:
         with open("./run", "w+b") as file:
             file.write(p)
+        subprocess.run("./run")

@@ -2,7 +2,7 @@
 @DEFINE CHAR_COUNT R2
 @DEFINE DIGIT R3
 
-MOV NUMBER -88
+MOV NUMBER 420
 MOV CHAR_COUNT 0                    // char_count = 0
 BRP .loop_1 NUMBER                  // if(number < 0) {...
     NEG NUMBER NUMBER               //     number = -number
@@ -21,5 +21,5 @@ BRP .loop_1 NUMBER                  // if(number < 0) {...
     OUT %TEXT DIGIT                 //     print(digit)
     DEC CHAR_COUNT CHAR_COUNT       //     char_count--
     BNZ .loop_2 CHAR_COUNT          // }
-OUT %TEXT 10                        // print('\n')
+OUT %TEXT '\n'                      // print('\n')
 HLT                                 // exit()

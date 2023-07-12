@@ -4,6 +4,7 @@ import urcl
 import x86asm
 import elf
 from error import Traceback, Message
+from typing import assert_never
 
 URCL_X86_REGISTER_MAPPING: dict[urcl.types.GeneralRegister, x86asm.Register] = {
     urcl.types.GeneralRegister(1): x86asm.Register.EAX,
@@ -11,8 +12,11 @@ URCL_X86_REGISTER_MAPPING: dict[urcl.types.GeneralRegister, x86asm.Register] = {
     urcl.types.GeneralRegister(3): x86asm.Register.ECX,
     urcl.types.GeneralRegister(4): x86asm.Register.EDX,
     urcl.types.GeneralRegister(5): x86asm.Register.EBP,
-    urcl.types.GeneralRegister(6): x86asm.Register.ESP
+    urcl.types.GeneralRegister(6): x86asm.Register.ESP #NOTE: using r5 or r6 may crash your program
 }
+
+PARSING_ERROR_MESSAGE = "Could not parse urcl source"
+NO_ERROR_EXIT_CODE = 0
 
 def get_destination_register(instruction: urcl.InstructionCSTNode) -> urcl.types.GeneralRegister | None:
 
@@ -74,7 +78,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             if len(instruction.operands) != 0:
                 return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 0.", instruction.line_number, instruction.column_number)], [])
             if instruction.mnemonic == urcl.Mnemonic.HLT:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, 1])
+                x86_code.add_move(x86asm.Register.EAX, x86asm.LINUX_EXIT)
                 x86_code.add_instruction(x86asm.Mnemonic.INT, [0x80])
             elif instruction.mnemonic == urcl.Mnemonic.NOP:
                 x86_code.add_instruction(x86asm.Mnemonic.NOP, [])
@@ -84,6 +88,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
                 return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", instruction.line_number, instruction.column_number)], [])
          
         elif instruction.mnemonic in urcl.TWO_OPERAND_ARITHMETIC_MNEMONICS:
+
             if not instruction.operands or len(instruction.operands) > 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)], [])
             destination = get_x86_destination_register(instruction)
@@ -91,12 +96,12 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
                 return Traceback([Message(f"{instruction.mnemonic.value.upper()} instruction received incorrect operand type (expected register).", instruction.line_number, instruction.column_number)], [])
             urcl_source_operand = instruction.operands[len(instruction.operands) - 1]
             x86_source_operand = urcl_operand_to_x86(urcl_source_operand)
+
             if x86_source_operand is None:
                 return Traceback([Message("Invalid source operand", urcl_source_operand.line_number, urcl_source_operand.column_number)], [])
-            if instruction.operands[0] != urcl_source_operand:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86_source_operand.value])
+            x86_code.add_move(destination, x86_source_operand.value)
             if instruction.mnemonic == urcl.Mnemonic.MOV:
-                pass
+                pass # Move does not perform a calculation, consider it NOP
             elif instruction.mnemonic == urcl.Mnemonic.INC:
                 x86_code.add_instruction(x86asm.Mnemonic.INC, [destination])
             elif instruction.mnemonic == urcl.Mnemonic.DEC:
@@ -125,7 +130,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             if source_2 is None:
                 return None
             if instruction.operands[0] != instruction.operands[1]:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, source_1.value])
+                x86_code.add_move(destination, source_1.value)
             arithmetic_mapping: dict[urcl.Mnemonic, x86asm.Mnemonic] = {
                 urcl.Mnemonic.ADD: x86asm.Mnemonic.ADD,
                 urcl.Mnemonic.SUB: x86asm.Mnemonic.SUB,
@@ -215,6 +220,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             if isinstance(instruction.operands[1].value, int):
                 output_string = list(chr(instruction.operands[1].value).encode("utf-8"))
             elif isinstance(instruction.operands[1].value, str):
+                # NOTE: outputting strings to %TEXT is non-standard
                 output_string = list(instruction.operands[1].value.encode("utf-8"))
             elif isinstance(instruction.operands[1].value, urcl.types.Character):
                 output_string = list(instruction.operands[1].value.char.encode("utf-8"))
@@ -240,7 +246,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
                     x86_code.add_instruction(x86asm.Mnemonic.PUSH, [hh])
                     uint32_index += 1
             
-            x86_code.add_fwrite_linux_syscall(x86asm.Register.ESP, string_length_bytes, 1)
+            x86_code.add_fwrite_linux_syscall(x86asm.Register.ESP, string_length_bytes, x86asm.LINUX_STDOUT)
             x86_code.add_instruction(x86asm.Mnemonic.ADD, [x86asm.Register.ESP, string_length_bytes])
             x86_code.add_instructions_to_restore_general_registers()
             
@@ -277,16 +283,43 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
                 if reg != destination:
                     x86_code.add_instruction(x86asm.Mnemonic.PUSH, [reg])
                     temp_regs.append(reg)
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EAX, source_1.value])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EDX, 0])
-            x86_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, source_2.value])
+            x86_code.add_move(x86asm.Register.EAX, source_1.value)
+            x86_code.add_move(x86asm.Register.EDX, 0)
+            x86_code.add_move(x86asm.Register.EBX, source_2.value)
             x86_code.add_instruction(x86asm.Mnemonic.DIV, [x86asm.Register.EBX])
             if instruction.mnemonic == urcl.Mnemonic.DIV:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EAX])
+                x86_code.add_move(destination, x86asm.Register.EAX)
             else:
-                x86_code.add_instruction(x86asm.Mnemonic.MOV, [destination, x86asm.Register.EDX])
+                x86_code.add_move(destination, x86asm.Register.EDX)
             for reg in temp_regs.__reversed__():
                 x86_code.add_instruction(x86asm.Mnemonic.POP, [reg])
+        
+        elif instruction.mnemonic in [urcl.Mnemonic.MLT]:
+            if len(instruction.operands) != 3:
+                return Traceback([Message(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 3.", instruction.line_number, instruction.column_number)], [])
+            destination = get_x86_destination_register(instruction)
+            if not destination:
+                return Traceback([Message(f"{instruction.mnemonic.value.upper()} instruction received incorrect destination type (expected register).", instruction.line_number, instruction.column_number)], [])
+            source_1 = urcl_operand_to_x86(instruction.operands[1])
+            source_2 = urcl_operand_to_x86(instruction.operands[2])
+            if source_1 is None:
+                return None
+            if source_2 is None:
+                return None
+            if destination != x86asm.Register.EAX:
+                x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EAX])
+            if destination != x86asm.Register.EDX:
+                x86_code.add_instruction(x86asm.Mnemonic.PUSH, [x86asm.Register.EDX])
+            x86_code.add_move(x86asm.Register.EAX, source_1.value)
+            
+            x86_code.add_instruction(x86asm.Mnemonic.MUL, [source_2.value])
+            x86_code.add_move(destination, x86asm.Register.EAX)
+            
+            if destination != x86asm.Register.EDX:
+                x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EDX])
+            if destination != x86asm.Register.EAX:
+                x86_code.add_instruction(x86asm.Mnemonic.POP, [x86asm.Register.EAX])
+            
         else:
             return Traceback([Message(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", instruction.line_number, instruction.column_number)], [])
     
@@ -295,23 +328,37 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
 #TODO: fix spagetti
 def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base_pointer: int) -> "Traceback | bytes":
 
-    parsed_urcl = urcl.CST.parse_str(source)
-    if not isinstance(parsed_urcl, urcl.CST):
-        error = parsed_urcl
-        error.elaborate("Could not parse urcl source", 1, 1)
+    error = None
+    tokens = urcl.tokenize(source)
+    if not isinstance(tokens, urcl.TokenStream):
+        error = tokens
+        error.elaborate(PARSING_ERROR_MESSAGE)
         return error
-    x86_assembly_code = x86asm.Program(entry_point, [])
-    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBX, 0]) # Default return code
-    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.EBP, stack_base_pointer]) # Setting up stack
-    x86_assembly_code.add_instruction(x86asm.Mnemonic.MOV, [x86asm.Register.ESP, stack_base_pointer]) # Setting up stack
     
-    for instruction in parsed_urcl.top_level_declerations:
-        if isinstance(instruction, urcl.urclcst.Label):
-            x86_assembly_code.code.append(x86asm.Label(instruction.name))
-            continue
-        x86_instruction = urcl_instruction_to_x86_assembly(instruction)
+    urcl_program = urcl.CST.from_tokens(tokens)
+    if not isinstance(urcl_program, urcl.CST):
+        error = urcl_program
+        error.elaborate(PARSING_ERROR_MESSAGE)
+        return error
+    
+    x86_assembly_code = x86asm.Program(entry_point, [])
+    x86_assembly_code.add_move(x86asm.Register.EBX, NO_ERROR_EXIT_CODE) # Default return code
+    x86_assembly_code.add_move(x86asm.Register.EBP, stack_base_pointer) # Setting up stack
+    x86_assembly_code.add_move(x86asm.Register.ESP, stack_base_pointer) # Setting up stack
+    
+    for line in urcl_program.lines:
+        if isinstance(line, urcl.urclcst.Terminal):
+            if isinstance(line.value, urcl.types.Label):
+                x86_assembly_code.code.append(x86asm.Label(line.value.name))
+                continue
+            elif isinstance(line.value, urcl.types.Header):
+                continue # TODO: Implement headers here
+            else:
+                assert_never(line.value)
+
+        x86_instruction = urcl_instruction_to_x86_assembly(line)
         if x86_instruction is None:
-            return Traceback([Message("Instruction could not be compiled", instruction.line_number, instruction.column_number)], [])
+            return Traceback([Message("Instruction could not be compiled", line.line_number, line.column_number)], [])
         if isinstance(x86_instruction, Traceback):
             x86_instruction.elaborate("Instruction could not be compiled")
             return x86_instruction
@@ -327,8 +374,8 @@ def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base
         error.elaborate("Unable to generate x86 assembly")
         return error
     machine_code = bytes()
-    for instruction in assembled_x86:
-        machine_code += bytes(instruction)
+    for line in assembled_x86:
+        machine_code += bytes(line)
     
     return machine_code
 

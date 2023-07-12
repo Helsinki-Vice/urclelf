@@ -1,11 +1,22 @@
 "This module takes a stream of URCL tokens and parses it into a concrete syntax tree"
 import enum
 from dataclasses import dataclass
-from typing import Union, Type, Self
+from typing import Union, Type, Self, Generic, TypeVar
 
 from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate
 import urcl.lex
 from error import Traceback, Message
+
+T = TypeVar("T")
+@dataclass
+class Terminal(Generic[T]):
+    value: T
+    line_number: int
+    column_number: int
+
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 class OperandType(enum.Enum):
     INTEGER = enum.auto()
@@ -34,12 +45,8 @@ class OperandParseResult:
     def miss(cls):
         return OperandParseResult(None, 0)
     
-    @classmethod
-    def success(cls, value: OperandCSTNode, tokens_consumed: int):
-        return OperandParseResult(value, tokens_consumed)
-
 def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
-
+        
         for token in tokens:
 
             if token.type == urcl.lex.TokenType.LABEL:
@@ -63,6 +70,11 @@ def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
                     return OperandParseResult(f"Invalid character: '{token.value}'", 1)
                 return OperandParseResult(OperandCSTNode(Character(token.value), token.line_number, token.column_number), 1)
             
+            elif token.type == urcl.lex.TokenType.STRING:
+                if not isinstance(token.value, str) or not token.value:
+                    return OperandParseResult(f"Invalid string: '{token.value}'", 1)
+                return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
+            
             elif token.type == urcl.lex.TokenType.PORT:
                 if not isinstance(token.value, str) or not token.value:
                     return OperandParseResult(f"Invalid Port: '{token.value}'", 1)
@@ -84,7 +96,7 @@ def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
                     return OperandParseResult(f"Invalid defined immediate: '{token.value}'", 1)
                 return OperandParseResult(OperandCSTNode(defined_immediate, token.line_number, token.column_number), 1)
         
-        return OperandParseResult(None, 0)
+        return OperandParseResult.miss()
 
 def get_operand_type(value: OperandCSTNode):
 
@@ -111,104 +123,30 @@ class InstructionCSTNode:
         self.column_number = column_number
     
     @classmethod
-    def parse(cls, words: urcl.lex.TokenStream) -> "InstructionCSTNode | Traceback":
+    def parse(cls, tokens: urcl.lex.TokenStream) -> "InstructionCSTNode | Traceback":
 
-        if not words:
+        if not tokens:
             return Traceback([Message("Instruction must not be empty.", 0, 0)], [])
-        if not words.tokens[0].value:
-            return Traceback([Message("Instruction must have a mnemoric", words.tokens[0].line_number, words.tokens[0].column_number)], [])
+        if not tokens.tokens[0].value:
+            return Traceback([Message("Instruction must have a mnemoric", tokens.tokens[0].line_number, tokens.tokens[0].column_number)], [])
         try:
-            mnemonic = Mnemonic(str(words.tokens[0].value).lower())
+            mnemonic = Mnemonic(str(tokens.tokens[0].value).lower())
         except ValueError:
-            return Traceback([Message(f"Unknown mnemonic '{words.tokens[0].value}'", words.tokens[0].line_number, words.tokens[0].column_number)], [])
+            return Traceback([Message(f"Unknown mnemonic '{tokens.tokens[0].value}'", tokens.tokens[0].line_number, tokens.tokens[0].column_number)], [])
         
         operands: list[OperandCSTNode] = []
-        for token in words.tokens[1:]:
-
-            if token.type == urcl.lex.TokenType.COMMA:
-                continue #allow commas TODO: add warning in parser output
-
-            if token.value is None:
-                return Traceback([Message("Operand must not be empty.", token.line_number, token.column_number)], [])
-            
-            if token.type == urcl.lex.TokenType.LABEL:
-                operands.append(OperandCSTNode(Label(str(token.value)), token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.GENERAL_REGISTER:
-                if not isinstance(token.value, GeneralRegister):
-                    return Traceback([Message(f"Invalid register token '{token.value}' has value of type {type(token.value).__name__}", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(token.value, token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.INTEGER:
-                if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid integer: '{token.value}'", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(token.value, token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.RELATIVE_JUMP:
-                if not isinstance(token.value, int):
-                    return Traceback([Message(f"Invalid relative jump: '{token.value}'", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(RelativeAddress(token.value), token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.CHARACTER:
-                if not isinstance(token.value, str) or not token.value:
-                    return Traceback([Message(f"Invalid character: '{token.value}'", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(Character(token.value), token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.STRING:
-                if not isinstance(token.value, str) or not token.value:
-                    return Traceback([Message(f"Invalid string: '{token.value}'", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(token.value, token.line_number, token.column_number))
-            
-            elif token.type == urcl.lex.TokenType.PORT:
-                if not isinstance(token.value, str) or not token.value:
-                    return Traceback([Message(f"Invalid Port: '{token.value}'", token.line_number, token.column_number)], [])
-                port = Port.from_value(token.value)
-                if port:
-                    operands.append(OperandCSTNode(port, token.line_number, token.column_number))
-                else:
-                    return Traceback([Message(f"Unknown Port: '{token.value}'", token.line_number, token.column_number)], [])
-            
-            elif token.type == urcl.lex.TokenType.MACRO:
-                if isinstance(token.value, str):
-                    try:
-                        defined_immediate = DefinedImmediate(token.value.upper())
-                    except ValueError:
-                        defined_immediate = None
-                else:
-                    defined_immediate = None
-                if not defined_immediate:
-                    return Traceback([Message(f"Invalid defined immediate: '{token.value}'", token.line_number, token.column_number)], [])
-                operands.append(OperandCSTNode(defined_immediate, token.line_number, token.column_number))
-                continue
-                if defined_immediate == DefinedImmediate.BITS:
-                    operands.append(OperandCSTNode(32, token.line_number, token.column_number))
-                elif defined_immediate == DefinedImmediate.MINREG:
-                    operands.append(OperandCSTNode(4, token.line_number, token.column_number))
-                elif defined_immediate == DefinedImmediate.MINHEAP:
-                    operands.append(0) #TODO: implement headers
-                elif defined_immediate == DefinedImmediate.MINSTACK:
-                    operands.append(20)
-                elif defined_immediate == DefinedImmediate.HEAP:
-                    operands.append(0)
-                elif defined_immediate == DefinedImmediate.MSB:
-                    operands.append(2**31)
-                elif defined_immediate == DefinedImmediate.SMSB:
-                    operands.append(2**30)
-                elif defined_immediate == DefinedImmediate.MAX:
-                    operands.append(2**32 - 1)
-                elif defined_immediate == DefinedImmediate.SMAX:
-                    operands.append(2**31 - 1)
-                elif defined_immediate == DefinedImmediate.UHALF:
-                    operands.append((2**16 - 1) << 16)
-                elif defined_immediate == DefinedImmediate.LHALF:
-                    operands.append(2**16)
-                else:
-                    return Traceback([Message(f"Defined immediate: '@{defined_immediate.name}' not yet implemented", token.line_number, token.column_number)], [])
-            
+        index = 1
+        while index < len(tokens):
+            result = parse_operand(tokens[index:])
+            if isinstance(result.data, OperandCSTNode):
+                operands.append(result.data)
+                index += 1
+            elif isinstance(result.data, str):
+                return Traceback([Message(result.data, tokens[index].line_number, tokens[index].column_number_number)], [])
             else:
-                return Traceback([Message(f"Unsupported operand '{token}'", token.line_number, token.column_number)], [])
+                return Traceback([Message("Invalid operand", tokens[index].line_number, tokens[index].column_number)], [])
         
-        return InstructionCSTNode(mnemonic, operands, words[0].line_number, words[0].column_number)
+        return InstructionCSTNode(mnemonic, operands, tokens[0].line_number, tokens[0].column_number)
     """
     def get_jump_target(self):
 
@@ -226,27 +164,22 @@ class InstructionCSTNode:
         if isinstance(self.operands[0], GeneralRegister):
             return self.operands[0]
     """
-    @classmethod
-    def parse_str(cls, source: str):
-        
-        tokens = urcl.lex.tokenize(source)
-        if not isinstance(tokens, urcl.lex.TokenStream):
-            error = tokens
-            error.elaborate("Invalid tokens")
-            return error
-        
-        return InstructionCSTNode.parse(tokens)
     
     def __str__(self) -> str:
         
         operands = " ".join([str(operand) for operand in self.operands])
         return f"{self.mnemonic.value} {operands}"
 
+Line = InstructionCSTNode | Terminal[urcl.types.Label] | Terminal[urcl.types.Header]
+
+def parse_line():
+    ...
+
 class CST:
 
     def __init__(self) -> None:
         
-        self.top_level_declerations: "list[InstructionCSTNode | Label]" = []
+        self.lines: list[Line] = []
     
     @classmethod
     def from_tokens(cls, source: urcl.lex.TokenStream) -> "CST | Traceback":
@@ -254,59 +187,49 @@ class CST:
         cst = CST()
         macros: dict[str, list[urcl.lex.Token]] = {}
         for line in source.split_lines():
-            words = line.tokens
-
-            if not words:
+            tokens = line.tokens
+            
+            if not tokens:
                 continue
             
-            if words[0].type == urcl.lex.TokenType.LABEL:
-                if not words[0].value:
-                    return Traceback([Message(f"Label must not be empty", words[0].line_number, words[0].column_number)], [])
-                if len(words) > 1:
-                    return Traceback([Message(f"Unexpected {words[1].type.value} after label .{words[0].value}", words[1].line_number, words[1].column_number)], [])
-                cst.top_level_declerations.append(Label(str(words[0].value)))
+            if tokens[0].type == urcl.lex.TokenType.LABEL:
+                if not tokens[0].value:
+                    return Traceback([Message(f"Label must not be empty", tokens[0].line_number, tokens[0].column_number)], [])
+                if len(tokens) > 1:
+                    return Traceback([Message(f"Unexpected {tokens[1].type.value} after label .{tokens[0].value}", tokens[1].line_number, tokens[1].column_number)], [])
+                cst.lines.append(Terminal(urcl.types.Label(str(tokens[0].value)), tokens[0].line_number, tokens[0].column_number))
                 continue
 
-            if words[0].type == urcl.lex.TokenType.MACRO:
-                if not isinstance(words[0].value, str):
-                    return Traceback([Message(f"Malformed macro token has non-str value (?)", words[0].line_number, words[0].column_number)], [])
-                if words[0].value.upper() != "DEFINE":
-                    return Traceback([Message(f"Top-level macro token must have value of @DEFINE, found @{words[0].value.upper()}", words[0].line_number, words[0].column_number)], [])
-                if len(words) <3: # ❤
-                    return Traceback([Message(f"Macro definition is to short, use the syntax @DEFINE WORD DEFINITION", words[0].line_number, words[0].column_number)], [])
-                if words[1].type != urcl.lex.TokenType.IDENTIFIER:
-                    return Traceback([Message(f"Expected identifier, found {words[1].type.value}", words[1].line_number, words[1].column_number)], [])
-                macros.update({str(words[1].value): words[2:]})
+            elif tokens[0].type == urcl.lex.TokenType.MACRO:
+                if not isinstance(tokens[0].value, str):
+                    return Traceback([Message(f"Malformed macro token has non-str value (?)", tokens[0].line_number, tokens[0].column_number)], [])
+                if tokens[0].value.upper() != "DEFINE":
+                    return Traceback([Message(f"Top-level macro token must have value of @DEFINE, found @{tokens[0].value.upper()}", tokens[0].line_number, tokens[0].column_number)], [])
+                if len(tokens) <3: # ❤
+                    return Traceback([Message(f"Macro definition is to short, use the syntax @DEFINE WORD DEFINITION", tokens[0].line_number, tokens[0].column_number)], [])
+                if tokens[1].type != urcl.lex.TokenType.IDENTIFIER:
+                    return Traceback([Message(f"Expected identifier, found {tokens[1].type.value}", tokens[1].line_number, tokens[1].column_number)], [])
+                macros.update({str(tokens[1].value): tokens[2:]})
                 continue
-            result_tokens: list[urcl.lex.Token] = []
-            for token in words:
-                if token.type == urcl.lex.TokenType.IDENTIFIER:
-                    macro_value = macros.get(str(token.value))
-                    if macro_value:
-                        for macro_token in macro_value:
-                            result_tokens.append(urcl.lex.Token(macro_token.type, token.line_number, token.column_number, macro_token.value))
+            else:
+                result_tokens: list[urcl.lex.Token] = []
+                for token in tokens:
+                    if token.type == urcl.lex.TokenType.IDENTIFIER:
+                        macro_value = macros.get(str(token.value))
+                        if macro_value:
+                            for macro_token in macro_value:
+                                result_tokens.append(urcl.lex.Token(macro_token.type, token.line_number, token.column_number, macro_token.value))
+                        else:
+                            result_tokens.append(token)
                     else:
                         result_tokens.append(token)
-                else:
-                    result_tokens.append(token)
             instruction = InstructionCSTNode.parse(urcl.lex.TokenStream(result_tokens))
             if not isinstance(instruction, InstructionCSTNode):
                 instruction.elaborate("Invalid instruction")
                 return instruction
             
-            cst.top_level_declerations.append(instruction)
+            cst.lines.append(instruction)
         return cst
     
-    @classmethod
-    def parse_str(cls, source: str) -> "CST | Traceback":
-
-        tokens = urcl.lex.tokenize(source)
-        if not isinstance(tokens, urcl.lex.TokenStream):
-            error = tokens
-            error.elaborate("Invalid tokens")
-            return error
-        
-        return CST.from_tokens(tokens)
-    
     def __str__(self) -> str:
-        return "\n".join([str(line) for line in self.top_level_declerations])
+        return "\n".join([str(line) for line in self.lines])

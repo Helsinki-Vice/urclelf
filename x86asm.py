@@ -57,6 +57,9 @@ BRANCH_MNEMONICS = [
     Mnemonic.CALL
 ]
 
+LINUX_WRITE = 4
+LINUX_STDOUT = 1
+LINUX_EXIT = 1
 
 @dataclass
 class Label:
@@ -279,6 +282,10 @@ class Program:
             instruction.operands.append(Operand(operand))
         self.code.append(instruction)
     
+    def add_move(self, destination: Register, source: int | Register | Label):
+        if destination != source:
+            self.add_instruction(Mnemonic.MOV, [destination, source])
+    
     #TODO: get pushad/popad instructions working
     def add_instructions_to_save_general_registers(self):
         self.add_instruction(Mnemonic.PUSH, [Register.EAX])
@@ -293,12 +300,11 @@ class Program:
         self.add_instruction(Mnemonic.POP, [Register.EAX])
     
     def add_fwrite_linux_syscall(self, char_pointer: int | Register | Label, size: int | Register | Label, file_descriptor: int | Register | Label):
-        self.add_instruction(Mnemonic.MOV, [Register.EAX, 4])
-        self.add_instruction(Mnemonic.MOV, [Register.EBX, 1])
-        self.add_instruction(Mnemonic.MOV, [Register.ECX, char_pointer])
-        self.add_instruction(Mnemonic.MOV, [Register.EDX, size])
+        self.add_move(Register.EAX, LINUX_WRITE)
+        self.add_move(Register.EBX, file_descriptor)
+        self.add_move(Register.ECX, char_pointer)
+        self.add_move(Register.EDX, size)
         self.add_instruction(Mnemonic.INT, [0x80])
-        
             
     """
     def resolve_labels(self):

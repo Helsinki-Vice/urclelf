@@ -1,0 +1,30 @@
+@DEFINE NUMBER R1
+@DEFINE CHAR_COUNT R2
+@DEFINE DIGIT R3
+@DEFINE ITER R4
+
+MOV ITER 0                              // iter = 0
+.loop_1                                 // while(iter <= 6) {
+    MLT NUMBER ITER ITER                //     number = iter * iter
+    MOV CHAR_COUNT 0                    //     char_count = 0
+    BRP .loop_2 NUMBER                  //     if(number < 0) {...
+        NEG NUMBER NUMBER               //         number = -number
+        OUT %TEXT '-'                   //         print('-')
+                                        //     }
+    .loop_2                             //     while(number) {
+        MOD DIGIT NUMBER 10             //         digit = number % 10
+        ADD DIGIT DIGIT '0'             //         digit = ascii(digit)
+        PSH DIGIT                       //         push(digit)
+        DIV NUMBER NUMBER 10            //         number /= 10
+        INC CHAR_COUNT CHAR_COUNT       //         char_count++
+        BNZ .loop_2 NUMBER              //     }
+
+    .loop_3                             //     while(char_count)
+        POP DIGIT                       //         digit = pop()
+        OUT %TEXT DIGIT                 //         print(digit)
+        DEC CHAR_COUNT CHAR_COUNT       //         char_count--
+        BNZ .loop_3 CHAR_COUNT          //     }
+    OUT %TEXT '\n'                      //     print('\n')
+    INC ITER ITER                       //     iter++
+    BLE .loop_1 ITER 6                  // }
+HLT                                     // exit()

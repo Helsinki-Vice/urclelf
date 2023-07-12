@@ -226,8 +226,8 @@ class AST:
         code_index = 0
         instruction_index = 0
         labels: dict[cst.Label, int] = {}
-        while code_index < len(cst_code.top_level_declerations):
-            instruction = cst_code.top_level_declerations[code_index]
+        while code_index < len(cst_code.lines):
+            instruction = cst_code.lines[code_index]
             if isinstance(instruction, cst.Label):
                 for label in labels:
                     if instruction.name == label.name:

@@ -7,6 +7,7 @@ Supported features:
  - char literals
  - utf-8 strings
  - hex and binary literals
+ - memory literals
  - %TEXT port
  - outputting strings directly to %TEXT
  - PSH and POP

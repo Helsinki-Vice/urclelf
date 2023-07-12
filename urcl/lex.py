@@ -185,10 +185,30 @@ def extract_register_token(source: str) -> TokenParseResult:
             break
         index += 1
     
+    if index == 1:
+        return TokenParseResult.miss()
     try:
         token_value = urcl.types.GeneralRegister(int(source[1:index], base=0))
     except ValueError:
         return TokenParseResult(f"Malformed register '{source[1:index]}'", 0)
+            
+    return TokenParseResult.success(TokenType.GENERAL_REGISTER, token_value, index)
+
+def extract_memory_address_token(source: str) -> TokenParseResult:
+
+    if source[0].lower() not in ["m", "#"]: return TokenParseResult.miss()
+    index = 1
+    while index < len(source):
+        if source[index] not in "0123456789":
+            break
+        index += 1
+    
+    if index == 1:
+        return TokenParseResult.miss()
+    try:
+        token_value = urcl.types.GeneralRegister(int(source[1:index], base=0))
+    except ValueError:
+        return TokenParseResult(f"Malformed memory address '{source[1:index]}'", 0)
             
     return TokenParseResult.success(TokenType.GENERAL_REGISTER, token_value, index)
 
@@ -320,6 +340,7 @@ TOKEN_EXTRACTION_FUNCTIONS: list[Callable[[str], TokenParseResult]] = [
     extract_character_token,
     extract_string_token,
     extract_register_token,
+    extract_memory_address_token,
     extract_identifier_token,
     extract_macro_token,
     extract_header_inequality_token,
