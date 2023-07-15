@@ -49,7 +49,7 @@ class Token:
         return result
 
 @dataclass
-class TokenStream:
+class TokenStream: #TODO: add __getitem__ and __setitem__
 
     tokens: list[Token]
 
@@ -74,12 +74,6 @@ class TokenStream:
     def append(self, token: Token):
         self.tokens.append(token)
     
-    def __getitem__(self, index):
-        return self.tokens.__getitem__(index)
-
-    def __setitem__(self, index, value):
-        return self.tokens.__setitem__(index, value)
-
     def __iter__(self):
         return self.tokens.__iter__()
     
@@ -383,7 +377,7 @@ class Lexer:
         
         return tokens
 
-    def advance(self, amount=1):
+    def advance(self, amount:int=1):
 
         if amount < 1:
             return

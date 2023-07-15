@@ -1,4 +1,5 @@
-
+"""Definitions for the executable and linkable file format 'ELF'.
+based on file:///usr/include/elf.h"""
 
 import struct
 import enum

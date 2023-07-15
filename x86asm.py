@@ -190,6 +190,7 @@ class InstructionEncoding: #FIXME: Hacks all around!
 INSTRUCTION_FORMATS = [
     InstructionEncoding([Opcode(bytes([0x00]))], Mnemonic.ADD, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding([Opcode(bytes([0x01]))], Mnemonic.ADD, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
+    InstructionEncoding([Opcode(bytes([0x29]))], Mnemonic.SUB, [OperandEncodingFormat.MODREGRM_RM_FIELD, OperandEncodingFormat.MODREGRM_REGISTER_FIELD]),
     InstructionEncoding([Opcode(bytes([0x40]))], Mnemonic.INC, [OperandEncodingFormat.OPCODE]),
     InstructionEncoding([Opcode(bytes([0x48]))], Mnemonic.DEC, [OperandEncodingFormat.OPCODE]),
     InstructionEncoding([Opcode(bytes([0x50]))], Mnemonic.PUSH, [OperandEncodingFormat.OPCODE]),
@@ -275,7 +276,7 @@ class Program:
         
         return machine_code
 
-    def add_instruction(self, mnemonic: Mnemonic, operands: "list[int | Register | Label]", addressing_mode=AddressingMode.DIRECT):
+    def add_instruction(self, mnemonic: Mnemonic, operands: list[int | Register | Label], addressing_mode:AddressingMode=AddressingMode.DIRECT):
 
         instruction = X86ASMInstruction(mnemonic, [], addressing_mode)
         for operand in operands:

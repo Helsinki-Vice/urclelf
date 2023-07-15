@@ -15,8 +15,8 @@ class Traceback:
     def elaborate(self, message: str, line_number=0, column_number=1):
 
         if not line_number:
-            line_number = self.errors[-1].line
-            column_number = self.errors[-1].column
+            line_number = self.errors[0].line
+            column_number = self.errors[0].column
         self.errors.insert(0, Message(message, line_number, column_number))
     
     def warn(self, message: Message):

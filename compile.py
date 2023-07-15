@@ -4,26 +4,25 @@ import urcl
 import x86asm
 import elf
 from error import Traceback, Message
-from typing import assert_never
 
-URCL_X86_REGISTER_MAPPING: dict[urcl.types.GeneralRegister, x86asm.Register] = {
-    urcl.types.GeneralRegister(1): x86asm.Register.EAX,
-    urcl.types.GeneralRegister(2): x86asm.Register.EBX,
-    urcl.types.GeneralRegister(3): x86asm.Register.ECX,
-    urcl.types.GeneralRegister(4): x86asm.Register.EDX,
-    urcl.types.GeneralRegister(5): x86asm.Register.EBP,
-    urcl.types.GeneralRegister(6): x86asm.Register.ESP #NOTE: using r5 or r6 may crash your program
+URCL_X86_REGISTER_MAPPING: dict[urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer, x86asm.Register] = {
+    urcl.GeneralRegister(1): x86asm.Register.EAX,
+    urcl.GeneralRegister(2): x86asm.Register.EBX,
+    urcl.GeneralRegister(3): x86asm.Register.ECX,
+    urcl.GeneralRegister(4): x86asm.Register.EDX,
+    urcl.BasePointer(): x86asm.Register.EBP,
+    urcl.StackPointer(): x86asm.Register.ESP
 }
 
 PARSING_ERROR_MESSAGE = "Could not parse urcl source"
 NO_ERROR_EXIT_CODE = 0
 
-def get_destination_register(instruction: urcl.InstructionCSTNode) -> urcl.types.GeneralRegister | None:
+def get_destination_register(instruction: urcl.InstructionCSTNode) -> urcl.GeneralRegister | None:
 
     if not instruction.operands:
         return None
     urcl_destination_register = instruction.operands[0].value
-    if not isinstance(urcl_destination_register, urcl.types.GeneralRegister):
+    if not isinstance(urcl_destination_register, urcl.GeneralRegister):
         return None
     
     return urcl_destination_register
@@ -39,12 +38,12 @@ def get_x86_destination_register(instruction: urcl.InstructionCSTNode) -> x86asm
     
     return x86_destination_register
 
-def get_jump_target(instruction: urcl.InstructionCSTNode) -> urcl.types.Label | None:
+def get_jump_target(instruction: urcl.InstructionCSTNode) -> urcl.Label | None:
 
     if not instruction.operands:
         return None
     urcl_destination = instruction.operands[0].value
-    if not isinstance(urcl_destination, urcl.types.Label):
+    if not isinstance(urcl_destination, urcl.Label):
         return None
     
     return urcl_destination
@@ -53,7 +52,7 @@ def urcl_operand_to_x86(operand: urcl.urclcst.OperandCSTNode) -> "x86asm.Operand
 
     if isinstance(operand.value, urcl.urclcst.Label):
         return x86asm.Operand(x86asm.Label(operand.value.name))
-    elif isinstance(operand.value, urcl.urclcst.GeneralRegister):
+    elif isinstance(operand.value, (urcl.GeneralRegister, urcl.BasePointer, urcl.StackPointer)):
         register = URCL_X86_REGISTER_MAPPING.get(operand.value)
         if register:
             return x86asm.Operand(register)
@@ -63,10 +62,22 @@ def urcl_operand_to_x86(operand: urcl.urclcst.OperandCSTNode) -> "x86asm.Operand
         return x86asm.Operand(operand.value.offset)
     elif isinstance(operand.value, urcl.urclcst.Character):
         return x86asm.Operand(ord(operand.value.char))
-    elif isinstance(operand.value, urcl.types.Port):
+    elif isinstance(operand.value, urcl.Port):
         return x86asm.Operand(operand.value.value.id)
     else:
         return None
+
+def bytes_to_stack_ints(value: bytes):
+    """Givin a sequence of bytes, what 32 bit little endian ints do we push
+    to the stack to make the stack pointer point to the bytes?"""
+    int_count = math.ceil(len(value) / 4)
+    result = [0] * int_count
+    for i, byte in enumerate(value + bytes(int_count * 4 - len(value))):
+        int_index = int_count - (i // 4) - 1
+        shift_amount = (i % 4) * 8
+        result[int_index] += byte << shift_amount
+    
+    return result
 
 # The rather frightening code below does the majority of
 # the work in translating urcl to x86 assembly. Don't like elif chains? Too bad!
@@ -98,7 +109,7 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             x86_source_operand = urcl_operand_to_x86(urcl_source_operand)
 
             if x86_source_operand is None:
-                return Traceback([Message("Invalid source operand", urcl_source_operand.line_number, urcl_source_operand.column_number)], [])
+                return Traceback([Message(f"Invalid source operand {urcl_source_operand}", urcl_source_operand.line_number, urcl_source_operand.column_number)], [])
             x86_code.add_move(destination, x86_source_operand.value)
             if instruction.mnemonic == urcl.Mnemonic.MOV:
                 pass # Move does not perform a calculation, consider it NOP
@@ -166,8 +177,6 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             if x86_source_operand is None:
                 return None
             x86_code.add_instruction(x86asm.Mnemonic.CMP, [x86_source_operand.value, 0])
-            if not isinstance(destination_operand, urcl.urclcst.Label):
-                return None
             if instruction.mnemonic == urcl.Mnemonic.BNZ:
                 x86_code.add_instruction(x86asm.Mnemonic.JNZ, [x86asm.Label(destination_operand.name)])
             elif instruction.mnemonic == urcl.Mnemonic.BRZ:
@@ -190,8 +199,6 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             if x86_source_operand_2 is None:
                 return None
             x86_code.add_instruction(x86asm.Mnemonic.CMP, [x86_source_operand_1.value, x86_source_operand_2.value])
-            if not isinstance(destination_operand, urcl.urclcst.Label):
-                return None
             if instruction.mnemonic == urcl.Mnemonic.BLE:
                 x86_code.add_instruction(x86asm.Mnemonic.JBE, [x86asm.Label(destination_operand.name)])
             elif instruction.mnemonic == urcl.Mnemonic.BGE:
@@ -206,10 +213,10 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
         elif instruction.mnemonic == urcl.Mnemonic.OUT:
             if len(instruction.operands) != 2:
                 return Traceback([Message(f"Incorrect number of operands supplied to OUT instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)], [])
-            if isinstance(instruction.operands[0].value, urcl.types.Port):
+            if isinstance(instruction.operands[0].value, urcl.Port):
                 port = instruction.operands[0].value
             elif isinstance(instruction.operands[0].value, int):
-                port = urcl.types.Port.from_value(instruction.operands[0].value)
+                port = urcl.Port.from_value(instruction.operands[0].value)
             else:
                 port = None
             if port is None:
@@ -218,36 +225,30 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
             # URCL standard requires ascii encoding but we use utf-8 instead
             # don't tell ModPunchTree
             if isinstance(instruction.operands[1].value, int):
-                output_string = list(chr(instruction.operands[1].value).encode("utf-8"))
+                output_string = chr(instruction.operands[1].value).encode("utf-8")
             elif isinstance(instruction.operands[1].value, str):
                 # NOTE: outputting strings to %TEXT is non-standard
-                output_string = list(instruction.operands[1].value.encode("utf-8"))
-            elif isinstance(instruction.operands[1].value, urcl.types.Character):
-                output_string = list(instruction.operands[1].value.char.encode("utf-8"))
-            elif isinstance(instruction.operands[1].value, urcl.types.GeneralRegister):
+                output_string = instruction.operands[1].value.encode("utf-8")
+            elif isinstance(instruction.operands[1].value, urcl.Character):
+                output_string = instruction.operands[1].value.char.encode("utf-8")
+            elif isinstance(instruction.operands[1].value, urcl.GeneralRegister):
                 output_string = instruction.operands[1].value
             else:
                 return Traceback([Message(f"OUT instruction operand 2 '{instruction.operands[1]}' cannot be output onto a port.", instruction.line_number, instruction.column_number)], [])
             
             x86_code.add_instructions_to_save_general_registers()
 
-            if isinstance(output_string, urcl.types.GeneralRegister):
+            if isinstance(output_string, urcl.GeneralRegister):
                 string_length_bytes = 4
+                uint32_count = 1
                 x86_code.add_instruction(x86asm.Mnemonic.PUSH, [URCL_X86_REGISTER_MAPPING[output_string]])
             else:
-                output_string = list(output_string.__reversed__())
                 uint32_count = math.ceil(len(output_string) / 4)
-                string_length_bytes = uint32_count * 4
-                uint32_index = 0
-                while uint32_index < uint32_count:
-                    hh = 0
-                    for char_index, char in enumerate(output_string[uint32_index*4:uint32_index*4+4]):
-                        hh += char << (24 - (8 * char_index))
-                    x86_code.add_instruction(x86asm.Mnemonic.PUSH, [hh])
-                    uint32_index += 1
-            
+                string_length_bytes = len(output_string)
+                for u32 in bytes_to_stack_ints(output_string):
+                    x86_code.add_instruction(x86asm.Mnemonic.PUSH, [u32])
             x86_code.add_fwrite_linux_syscall(x86asm.Register.ESP, string_length_bytes, x86asm.LINUX_STDOUT)
-            x86_code.add_instruction(x86asm.Mnemonic.ADD, [x86asm.Register.ESP, string_length_bytes])
+            x86_code.add_instruction(x86asm.Mnemonic.ADD, [x86asm.Register.ESP, uint32_count * 4])
             x86_code.add_instructions_to_restore_general_registers()
             
         elif instruction.mnemonic in [urcl.Mnemonic.PSH]:
@@ -348,13 +349,11 @@ def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base
     
     for line in urcl_program.lines:
         if isinstance(line, urcl.urclcst.Terminal):
-            if isinstance(line.value, urcl.types.Label):
+            if isinstance(line.value, urcl.Label):
                 x86_assembly_code.code.append(x86asm.Label(line.value.name))
                 continue
-            elif isinstance(line.value, urcl.types.Header):
-                continue # TODO: Implement headers here
             else:
-                assert_never(line.value)
+                continue # TODO: Implement headers here
 
         x86_instruction = urcl_instruction_to_x86_assembly(line)
         if x86_instruction is None:
@@ -379,7 +378,7 @@ def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base
     
     return machine_code
 
-def compile_urcl_to_executable(source: str, stack_size=512, small_filesize=False):
+def compile_urcl_to_executable(source: str, stack_size:int=512, small_filesize:bool=False):
     
     # We need to compile twice because of a chicken-and-egg situation:
     # We can't resolve labels/relatives (and therefore compile) without knowing the entry point,

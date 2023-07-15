@@ -1,6 +1,5 @@
 "This module provides types for representing and emitting x86 machine code"
 import enum
-import struct
 from dataclasses import dataclass
 
 # Links

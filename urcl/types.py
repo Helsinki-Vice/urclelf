@@ -132,6 +132,16 @@ class Character:
     def __str__(self) -> str:
         return f"'{self.char}'"
 
+@dataclass(unsafe_hash=True)
+class BasePointer:
+    def __str__(self) -> str:
+        return "bp"
+
+@dataclass(unsafe_hash=True)
+class StackPointer:
+    def __str__(self) -> str:
+        return "sp"
+
 class HeaderType(enum.Enum):
     BITS = enum.auto()
     MINREG = enum.auto()

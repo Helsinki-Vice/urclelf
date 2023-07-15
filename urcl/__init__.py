@@ -6,11 +6,10 @@ import urcl.lex as lex
 import urcl.urclcst as urclcst
 import urcl.urclast as urclast
 
-from urcl.types import Mnemonic
+from urcl.types import Mnemonic, GeneralRegister, BasePointer, StackPointer, Port, Label, Character
 from urcl.lex import tokenize, TokenStream
 from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode
 from urcl.urclast import AST, TWO_OPERAND_ARITHMETIC_MNEMONICS, TWO_OPERAND_CONDITION_JUMP_MNEMONICS, THREE_OPERAND_CONDITION_JUMP_MNEMONICS
-
 
 SYNTAX_ERROR_MESSAGE = "Syntax error"
 

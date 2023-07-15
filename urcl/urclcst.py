@@ -3,7 +3,7 @@ import enum
 from dataclasses import dataclass
 from typing import Union, Type, Self, Generic, TypeVar
 
-from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate
+from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate, BasePointer, StackPointer
 import urcl.lex
 from error import Traceback, Message
 
@@ -29,7 +29,7 @@ class OperandType(enum.Enum):
 
 @dataclass
 class OperandCSTNode:
-    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, Port, DefinedImmediate, str]
+    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, Port, DefinedImmediate, str | BasePointer | StackPointer | list[Self]]
     line_number: int
     column_number: int
 
@@ -47,8 +47,9 @@ class OperandParseResult:
     
 def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
         
-        for token in tokens:
-
+            index = 0
+            
+            token = tokens.tokens[index]
             if token.type == urcl.lex.TokenType.LABEL:
                 return OperandParseResult(OperandCSTNode(Label(str(token.value)), token.line_number, token.column_number), 1)
             
@@ -75,6 +76,16 @@ def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
                     return OperandParseResult(f"Invalid string: '{token.value}'", 1)
                 return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
             
+            elif token.type == urcl.lex.TokenType.IDENTIFIER:
+                if not isinstance(token.value, str) or not token.value:
+                    return OperandParseResult(f"Invalid identifier: '{token.value}'", 1)
+                if token.value.lower() == "bp":
+                    return OperandParseResult(OperandCSTNode(BasePointer(), token.line_number, token.column_number), 1)
+                elif token.value.lower() == "sp":
+                    return OperandParseResult(OperandCSTNode(StackPointer(), token.line_number, token.column_number), 1)
+                else:
+                    return OperandParseResult.miss()
+            
             elif token.type == urcl.lex.TokenType.PORT:
                 if not isinstance(token.value, str) or not token.value:
                     return OperandParseResult(f"Invalid Port: '{token.value}'", 1)
@@ -95,27 +106,26 @@ def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
                 if not defined_immediate:
                     return OperandParseResult(f"Invalid defined immediate: '{token.value}'", 1)
                 return OperandParseResult(OperandCSTNode(defined_immediate, token.line_number, token.column_number), 1)
+            
+            elif token.type == urcl.lex.TokenType.LEFT_BRACKET:
+
+                pp = 0
+                while index < len(tokens):
+                    token = tokens.tokens[index]
+                    if token.type == urcl.lex.TokenType.RIGHT_BRACKET:
+                        break
+                    pp += 1 
+                    index += 1
+                else:
+                    return OperandParseResult("Array literal was not closed", 0)
+
+                return OperandParseResult(OperandCSTNode(pp, tokens.tokens[0].line_number, tokens.tokens[0].column_number), index + 1)
         
-        return OperandParseResult.miss()
-
-def get_operand_type(value: OperandCSTNode):
-
-    mapping = {
-        Label: OperandType.LABEL,
-        GeneralRegister: OperandType.GENERAL_REGISTER,
-        int: OperandType.INTEGER,
-        RelativeAddress: OperandType.RELATIVE_ADDERESS,
-        GeneralRegister: OperandType.CHARACTER,
-        GeneralRegister: OperandType.PORT,
-        list: OperandType.ARRAY
-    }
-    
-    t: Type = type(value)
-    return mapping.get(t)
+            return OperandParseResult.miss()
 
 class InstructionCSTNode:
 
-    def __init__(self, mnemonic: Mnemonic, operands: list[OperandCSTNode], line_number=0, column_number=0) -> None:
+    def __init__(self, mnemonic: Mnemonic, operands: list[OperandCSTNode], line_number:int=0, column_number:int=0) -> None:
 
         self.mnemonic = mnemonic
         self.operands = operands
@@ -137,16 +147,18 @@ class InstructionCSTNode:
         operands: list[OperandCSTNode] = []
         index = 1
         while index < len(tokens):
-            result = parse_operand(tokens[index:])
+            result = parse_operand(urcl.lex.TokenStream(tokens.tokens[index:]))
             if isinstance(result.data, OperandCSTNode):
                 operands.append(result.data)
-                index += 1
+                index += result.tokens_consumed
             elif isinstance(result.data, str):
-                return Traceback([Message(result.data, tokens[index].line_number, tokens[index].column_number_number)], [])
+                error = Traceback([Message(result.data, tokens.tokens[index].line_number, tokens.tokens[index].column_number)], [])
+                error.elaborate("Invalid operand")
+                return error
             else:
-                return Traceback([Message("Invalid operand", tokens[index].line_number, tokens[index].column_number)], [])
+                return Traceback([Message("Invalid operand", tokens.tokens[index].line_number, tokens.tokens[index].column_number)], [])
         
-        return InstructionCSTNode(mnemonic, operands, tokens[0].line_number, tokens[0].column_number)
+        return InstructionCSTNode(mnemonic, operands, tokens.tokens[0].line_number, tokens.tokens[0].column_number)
     """
     def get_jump_target(self):
 
@@ -211,6 +223,7 @@ class CST:
                     return Traceback([Message(f"Expected identifier, found {tokens[1].type.value}", tokens[1].line_number, tokens[1].column_number)], [])
                 macros.update({str(tokens[1].value): tokens[2:]})
                 continue
+
             else:
                 result_tokens: list[urcl.lex.Token] = []
                 for token in tokens:
@@ -225,7 +238,7 @@ class CST:
                         result_tokens.append(token)
             instruction = InstructionCSTNode.parse(urcl.lex.TokenStream(result_tokens))
             if not isinstance(instruction, InstructionCSTNode):
-                instruction.elaborate("Invalid instruction")
+                instruction.elaborate("Invalid instruction", tokens[0].line_number, tokens[0].column_number)
                 return instruction
             
             cst.lines.append(instruction)
