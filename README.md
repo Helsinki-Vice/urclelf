@@ -20,9 +20,10 @@ Unsupported features:
  - array literals
  - octal literals
  - about half of all urcl opcodes
+ - headers
  - all ports except %TEXT
  - LOD/STR
- - 8/32 bit modes
+ - real/long modes
  - x86 SIB addressing
  - debug symbols
  - linking

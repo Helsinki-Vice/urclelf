@@ -12,7 +12,11 @@ class Traceback:
     errors: list[Message]
     warnings: list[Message]
 
-    def elaborate(self, message: str, line_number=0, column_number=1):
+    @classmethod
+    def new(cls, message: str, line_number:int=0, column_number:int=1):
+        return Traceback([Message(message, line_number, column_number)], [])
+    
+    def elaborate(self, message: str, line_number:int=0, column_number:int=1):
 
         if not line_number:
             line_number = self.errors[0].line
