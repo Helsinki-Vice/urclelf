@@ -1,0 +1,3 @@
+PSH 0
+SUB R2 BP SP
+HLT // Return code: 4
