@@ -61,7 +61,7 @@ class Mnemonic(enum.StrEnum):
     PUSHAD = "pushad"
     RCL = "rcl"
     RCR = "rcr"
-    RET = "retn"
+    RET = "ret"
     ROL = "rol"
     ROR = "ror"
     SAL = "sal"

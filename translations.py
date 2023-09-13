@@ -363,7 +363,7 @@ def compile_load_instruction(instruction: urcl.InstructionCSTNode, entry_point: 
 def compile_store_instruction(instruction: urcl.InstructionCSTNode, entry_point: int):
     
     x86_code = x86.Program(entry_point, [])
-    if instruction.mnemonic in [urcl.Mnemonic.DIV, urcl.Mnemonic.MOD]:
+    if instruction.mnemonic in [urcl.Mnemonic.STR]:
        ...
     
     return x86_code
