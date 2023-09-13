@@ -1,7 +1,7 @@
 import subprocess
 from compile import compile_urcl_to_executable
 
-with open("./programs/hello_world.urcl", "r") as file:
+with open("./programs/print_squares.urcl", "r") as file:
     
     program = compile_urcl_to_executable(file.read())
     if not isinstance(program, bytes):

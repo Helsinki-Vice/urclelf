@@ -215,7 +215,7 @@ def extract_integer_token(source: str) -> TokenParseResult:
     if source[index:index+2].lower() in ["0x", "0b", "0o"]:
         index += 2
     while index < len(source):
-        if source[index] not in "0123456789":
+        if source[index] not in "0123456789abcdef":
             break
         index += 1
     

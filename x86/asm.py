@@ -61,7 +61,7 @@ class Mnemonic(enum.StrEnum):
     PUSHAD = "pushad"
     RCL = "rcl"
     RCR = "rcr"
-    RETN = "retn"
+    RET = "retn"
     ROL = "rol"
     ROR = "ror"
     SAL = "sal"
@@ -193,6 +193,12 @@ class Program:
         self.add_move(Register.EBX, file_descriptor)
         self.add_move(Register.ECX, char_pointer)
         self.add_move(Register.EDX, size)
+        self.add_instruction(Mnemonic.INT, [0x80])
+    
+    def add_exit_linux_syscall(self, exit_code: int | None):
+        self.add_move(Register.EAX, LINUX_EXIT)
+        if exit_code is not None:
+            self.add_move(Register.EBX, exit_code)
         self.add_instruction(Mnemonic.INT, [0x80])
     
     def __eq__(self, other: Self):

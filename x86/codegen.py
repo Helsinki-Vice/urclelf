@@ -5,7 +5,7 @@ import math
 from typing import Literal, Self
 from x86.machine import Register, ModRegRM, Opcode, X86Instruction, AddressingMode, InstructionPrefixes, ScaleIndexByte, ThreeBits
 from x86.asm import Mnemonic, EffectiveAddress, ASMInstruction, Program, Label, Operand, Immediate
-from error import Traceback, Message
+from error import Traceback
 
 LINUX_WRITE = 4
 LINUX_STDOUT = 1
@@ -21,7 +21,7 @@ class RegisterSize:
     size: Literal[8, 16, 32] | None = None
 
 OperandType = RegisterSize | ImmediateType | Register
-
+"""
 class CodeGenError(enum.Enum):
     UNKNOWN = enum.auto()
     WRONG_MNEMONIC = enum.auto()
@@ -31,11 +31,14 @@ class CodeGenError(enum.Enum):
     BAD_IMMEDIATE = enum.auto()
     INCORRECT_REGISTER_SIZE = enum.auto()
     INCORRECT_OPERAND_TYPE = enum.auto()
-
-def match_operand(operand: Operand, operand_type: OperandType):
+"""
+def match_operand(operand: Operand, operand_type: OperandType) -> bool:
 
     if isinstance(operand_type, RegisterSize):
-        return operand.get_register_size() == operand_type.size
+        if isinstance(operand.value, Register):
+            return operand.get_register_size() == operand_type.size
+        else:
+            return True
     elif isinstance(operand_type, ImmediateType):
         if not isinstance(operand.value, int):
             return False
@@ -115,11 +118,16 @@ class InstructionEncoding:
             if isinstance(operand_format, RegisterSize):
                 # Ignore if it is an immediate or an implied operand
                 operand = instruction.operands[index]
-                if not isinstance(operand.value, (Register, EffectiveAddress)):
-                    return CodeGenError.INCORRECT_OPERAND_TYPE
-                if operand.get_register_size() != operand_format.size:
-                    return CodeGenError.INCORRECT_REGISTER_SIZE
-                operands.append(operand.value)
+                if isinstance(operand.value, Register):
+                    if operand.get_register_size() != operand_format.size:
+                        return Traceback.new(f"Invalid register size for operand index {index}: exprected {operand_format.size} bits, found {operand.get_register_size()}.")
+                    operands.append(operand.value)
+                    pass
+                elif isinstance(operand.value, EffectiveAddress):
+                    operands.append(operand.value)
+                    pass
+                else:
+                    return Traceback.new(f"Expected register or memory operand, found an immediate instead.")
         
         if not operands:
             return None
@@ -136,20 +144,20 @@ class InstructionEncoding:
     
         else:
             # Too many operands, wtf
-            return CodeGenError.INCORRECT_OPERAND_COUNT
+            return Traceback.new(f"There are too many register/memory operands.")
         
         if isinstance(reg, EffectiveAddress):
             # Sir this is a Wendy's 💀
-            return CodeGenError.INCORRECT_OPERAND_TYPE
+            return Traceback.new("r/m field can only contain a register.")
         
         if isinstance(rm, EffectiveAddress):
             if rm.base:
                 #NOTE: We are assuming the cpu is not in real or long mode
                 if rm.base.value.size != 32:
-                    return CodeGenError.INCORRECT_REGISTER_SIZE
+                    return Traceback.new(f"Only 32 bit memory is currently supported.")
         else:
             if reg.value.size != rm.value.size:
-                return CodeGenError.INCORRECT_REGISTER_SIZE
+                return Traceback.new(f"Register {reg} and {rm} are not the same size.")
 
         return reg, rm
 
@@ -279,33 +287,35 @@ def encode_immediate(immediate_value: Immediate | None, immediate_type: Immediat
     if immediate_type is None:
         return bytes()
     if not isinstance(immediate_value, int):
-        return None
+        return Traceback.new(f"Label '{immediate_value}' not yet resolved (?)")
     instruction_end_address = immediate_address + immediate_type.size
     immediate_value_relative = immediate_value - instruction_end_address if immediate_type.is_relative else immediate_value
     if immediate_type.size == 1:
         if ((immediate_value_relative < -0x80 or immediate_value_relative >= 0x0100) and not immediate_type.is_relative) or ((immediate_value_relative < -0x80 or immediate_value_relative >= 0x80) and immediate_type.is_relative):
-            return None
+            return Traceback.new(f"Immediate {immediate_value} is not in 8-bit range OR relative immediate {immediate_value_relative} is not in signed 8-bit range.")
         return struct.pack("<b", ((immediate_value_relative + 128) % 256) - 128)
     elif immediate_type.size == 2:
         if (immediate_value_relative < -0x8000 or immediate_value_relative >= 0x8000):
-            return None
+            return Traceback.new(f"Immediate {immediate_value} is not in 16-bit range OR relative immediate {immediate_value_relative} is not in signed 16-bit range.")
         return struct.pack("<h", immediate_value_relative)
     else:
         if ((immediate_value_relative < -0x80000000 or immediate_value_relative >= 0x0100000000) and not immediate_type.is_relative) or ((immediate_value_relative < -0x80000000 or immediate_value_relative >= 0x80000000) and immediate_type.is_relative):
-            return None
+            return Traceback.new(f"Immediate {immediate_value} is not in 32-bit range OR relative immediate {immediate_value_relative} is not in signed 32-bit range.")
         return struct.pack("<i", ((immediate_value_relative + 2**31) % 2**32) - 2**31)
 
 
-def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncoding, instruction_address: int) -> X86Instruction | CodeGenError:
+def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncoding, instruction_address: int) -> X86Instruction | Traceback:
     if instruction.mnemonic != encoding.mnemonic:
-        return CodeGenError.WRONG_MNEMONIC
+        return Traceback.new(f"Wrong Mnemonic {instruction.mnemonic} != {encoding.mnemonic}")
     if len(instruction.operands) != len(encoding.operands):
-        return CodeGenError.INCORRECT_OPERAND_COUNT
+        return Traceback.new(f"Incorrect operand count of {len(instruction.operands)}, expected {len(encoding.operands)}")
     
     prefixes = InstructionPrefixes(None, False, False, None)
     
     regrm_operands = encoding.get_regrm_operands(instruction, encoding.opcode.get_direction_bit())
-    if isinstance(regrm_operands, CodeGenError):
+    if isinstance(regrm_operands, Traceback):
+        error = regrm_operands
+        error.elaborate("Cannot generate r/m field, bad operands.")
         return regrm_operands
     elif regrm_operands is None:
         register, register_or_memory = None, None
@@ -326,12 +336,14 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
     instruction_address += len(displacement)
 
     immediate = encode_immediate(instruction.get_immediate(), encoding.get_immediate(), instruction_address)
-    if immediate is None:
-        return CodeGenError.BAD_IMMEDIATE
+    if isinstance(immediate, Traceback):
+        error = immediate
+        error.elaborate(f"Bad immediate {instruction.get_immediate()}")
+        return error
     
     for index in range(len(encoding.operands)):
         if not match_operand(instruction.operands[index], encoding.operands[index]):
-            return CodeGenError.INCORRECT_OPERAND_TYPE
+            return Traceback.new(f"Operand '{instruction.operands[index]}' is not of the expected type.")
 
     return X86Instruction(prefixes, encoding.opcode, mod_reg_rm, sib, displacement, immediate)
 

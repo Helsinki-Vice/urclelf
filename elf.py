@@ -449,7 +449,7 @@ class Elf32Exec:
             section_names
         )
 
-        elf_header = self.calculate_elf_header(program_header_table_offset, section_header_table_offset, len(program_headers), len(section_headers), section_names_buffer.index(KnownSectionNames.SECTION_HEADER_STRING_TABLE.encode("utf-8")))
+        elf_header = self.calculate_elf_header(program_header_table_offset, section_header_table_offset, len(program_headers), len(section_headers), section_names.index(KnownSectionNames.SECTION_HEADER_STRING_TABLE))
 
         if use_section_header_table:
             sections = {

@@ -1,0 +1,3 @@
+mov r2 0x8048159
+lod r2 r2
+hlt
