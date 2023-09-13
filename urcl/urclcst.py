@@ -46,82 +46,82 @@ class OperandParseResult:
         return OperandParseResult(None, 0)
     
 def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
-        
-            index = 0
-            
-            token = tokens.tokens[index]
-            if token.type == urcl.lex.TokenType.LABEL:
-                return OperandParseResult(OperandCSTNode(Label(str(token.value)), token.line_number, token.column_number), 1)
-            
-            elif isinstance(token.value, GeneralRegister):
-                return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.INTEGER:
-                if not isinstance(token.value, int):
-                    return OperandParseResult(f"Invalid integer: '{token.value}'", 0)
-                return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.RELATIVE_JUMP:
-                if not isinstance(token.value, int):
-                    return OperandParseResult(f"Invalid relative jump: '{token.value}'", 0)
-                return OperandParseResult(OperandCSTNode(RelativeAddress(token.value), token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.CHARACTER:
-                if not isinstance(token.value, str) or not token.value:
-                    return OperandParseResult(f"Invalid character: '{token.value}'", 1)
-                return OperandParseResult(OperandCSTNode(Character(token.value), token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.STRING:
-                if not isinstance(token.value, str) or not token.value:
-                    return OperandParseResult(f"Invalid string: '{token.value}'", 1)
-                return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.IDENTIFIER:
-                if not isinstance(token.value, str) or not token.value:
-                    return OperandParseResult(f"Invalid identifier: '{token.value}'", 1)
-                if token.value.lower() == "bp":
-                    return OperandParseResult(OperandCSTNode(BasePointer(), token.line_number, token.column_number), 1)
-                elif token.value.lower() == "sp":
-                    return OperandParseResult(OperandCSTNode(StackPointer(), token.line_number, token.column_number), 1)
-                else:
-                    return OperandParseResult.miss()
-            
-            elif token.type == urcl.lex.TokenType.PORT:
-                if not isinstance(token.value, str) or not token.value:
-                    return OperandParseResult(f"Invalid Port: '{token.value}'", 1)
-                port = Port.from_value(token.value)
-                if port:
-                    return OperandParseResult(OperandCSTNode(port, token.line_number, token.column_number), 1)
-                else:
-                    return OperandParseResult(f"Unknown Port: '{token.value}'", 1)
-            
-            elif token.type == urcl.lex.TokenType.MACRO:
-                if isinstance(token.value, str):
-                    try:
-                        defined_immediate = DefinedImmediate(token.value.upper())
-                    except ValueError:
-                        defined_immediate = None
-                else:
-                    defined_immediate = None
-                if not defined_immediate:
-                    return OperandParseResult(f"Invalid defined immediate: '{token.value}'", 1)
-                return OperandParseResult(OperandCSTNode(defined_immediate, token.line_number, token.column_number), 1)
-            
-            elif token.type == urcl.lex.TokenType.LEFT_BRACKET:
-
-                pp = 0
-                while index < len(tokens):
-                    token = tokens.tokens[index]
-                    if token.type == urcl.lex.TokenType.RIGHT_BRACKET:
-                        break
-                    pp += 1 
-                    index += 1
-                else:
-                    return OperandParseResult("Array literal was not closed", 0)
-
-                return OperandParseResult(OperandCSTNode(pp, tokens.tokens[0].line_number, tokens.tokens[0].column_number), index + 1)
-        
+    
+    index = 0
+    
+    token = tokens.tokens[index]
+    if token.type == urcl.lex.TokenType.LABEL:
+        return OperandParseResult(OperandCSTNode(Label(str(token.value)), token.line_number, token.column_number), 1)
+    
+    elif isinstance(token.value, GeneralRegister):
+        return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.INTEGER:
+        if not isinstance(token.value, int):
+            return OperandParseResult(f"Invalid integer: '{token.value}'", 0)
+        return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.RELATIVE_JUMP:
+        if not isinstance(token.value, int):
+            return OperandParseResult(f"Invalid relative jump: '{token.value}'", 0)
+        return OperandParseResult(OperandCSTNode(RelativeAddress(token.value), token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.CHARACTER:
+        if not isinstance(token.value, str) or not token.value:
+            return OperandParseResult(f"Invalid character: '{token.value}'", 1)
+        return OperandParseResult(OperandCSTNode(Character(token.value), token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.STRING:
+        if not isinstance(token.value, str) or not token.value:
+            return OperandParseResult(f"Invalid string: '{token.value}'", 1)
+        return OperandParseResult(OperandCSTNode(token.value, token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.IDENTIFIER:
+        if not isinstance(token.value, str) or not token.value:
+            return OperandParseResult(f"Invalid identifier: '{token.value}'", 1)
+        if token.value.lower() == "bp":
+            return OperandParseResult(OperandCSTNode(BasePointer(), token.line_number, token.column_number), 1)
+        elif token.value.lower() == "sp":
+            return OperandParseResult(OperandCSTNode(StackPointer(), token.line_number, token.column_number), 1)
+        else:
             return OperandParseResult.miss()
+    
+    elif token.type == urcl.lex.TokenType.PORT:
+        if not isinstance(token.value, str) or not token.value:
+            return OperandParseResult(f"Invalid Port: '{token.value}'", 1)
+        port = Port.from_value(token.value)
+        if port:
+            return OperandParseResult(OperandCSTNode(port, token.line_number, token.column_number), 1)
+        else:
+            return OperandParseResult(f"Unknown Port: '{token.value}'", 1)
+    
+    elif token.type == urcl.lex.TokenType.MACRO:
+        if isinstance(token.value, str):
+            try:
+                defined_immediate = DefinedImmediate(token.value.upper())
+            except ValueError:
+                defined_immediate = None
+        else:
+            defined_immediate = None
+        if not defined_immediate:
+            return OperandParseResult(f"Invalid defined immediate: '{token.value}'", 1)
+        return OperandParseResult(OperandCSTNode(defined_immediate, token.line_number, token.column_number), 1)
+    
+    elif token.type == urcl.lex.TokenType.LEFT_BRACKET:
+        
+        pp = 0
+        while index < len(tokens):
+            token = tokens.tokens[index]
+            if token.type == urcl.lex.TokenType.RIGHT_BRACKET:
+                break
+            pp += 1 
+            index += 1
+        else:
+            return OperandParseResult("Array literal was not closed", 0)
+
+        return OperandParseResult(OperandCSTNode(pp, tokens.tokens[0].line_number, tokens.tokens[0].column_number), index + 1)
+
+    return OperandParseResult.miss()
 
 class InstructionCSTNode:
 
