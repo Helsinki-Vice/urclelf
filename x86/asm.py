@@ -4,10 +4,6 @@ import enum
 from typing import Literal, Self
 from x86.machine import Register
 
-LINUX_WRITE = 4
-LINUX_STDOUT = 1
-LINUX_EXIT = 1
-
 class Mnemonic(enum.StrEnum):
     ADC = "adc"
     ADD = "add"
@@ -187,19 +183,6 @@ class Program:
         self.add_instruction(Mnemonic.POP, [Register.ECX])
         self.add_instruction(Mnemonic.POP, [Register.EBX])
         self.add_instruction(Mnemonic.POP, [Register.EAX])
-    
-    def add_fwrite_linux_syscall(self, char_pointer: int | Register | Label, size: int | Register | Label, file_descriptor: int | Register | Label):
-        self.add_move(Register.EAX, LINUX_WRITE)
-        self.add_move(Register.EBX, file_descriptor)
-        self.add_move(Register.ECX, char_pointer)
-        self.add_move(Register.EDX, size)
-        self.add_instruction(Mnemonic.INT, [0x80])
-    
-    def add_exit_linux_syscall(self, exit_code: int | None):
-        self.add_move(Register.EAX, LINUX_EXIT)
-        if exit_code is not None:
-            self.add_move(Register.EBX, exit_code)
-        self.add_instruction(Mnemonic.INT, [0x80])
     
     def __eq__(self, other: Self):
 

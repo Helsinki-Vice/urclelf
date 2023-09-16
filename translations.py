@@ -2,7 +2,9 @@ import urcl
 from error import Traceback
 import x86
 import math
-from typing import Callable
+from typing import Callable, TypeVar, Generic
+import linux
+from dataclasses import dataclass
 
 URCL_X86_REGISTER_MAPPING: dict[urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer, x86.Register] = {
     urcl.GeneralRegister(1): x86.Register.EAX,
@@ -78,20 +80,26 @@ def bytes_to_stack_ints(value: bytes):
     
     return result
 
+def no_translation(instruction: urcl.InstructionCSTNode):
+    return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", instruction.line_number, instruction.column_number)
+"""
+T = TypeVar("T")
+@dataclass
+class InstructionFamily(Generic[T]):
+    mnemonics: list[urcl.Mnemonic]
+    parse: Callable[[urcl.Mnemonic, T, int], x86.Program | Traceback]
+"""
 def compile_zero_operand_instruction(instruction: urcl.InstructionCSTNode, entry_point: int):
     
     x86_code = x86.Program(entry_point, [])
-    if instruction.mnemonic in urcl.ZERO_OPERAND_MNEMONICS:
-        if len(instruction.operands) != 0:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 0.", instruction.line_number, instruction.column_number)
-        if instruction.mnemonic == urcl.Mnemonic.HLT:
-            x86_code.add_exit_linux_syscall(None)
-        elif instruction.mnemonic == urcl.Mnemonic.NOP:
-            x86_code.add_instruction(x86.Mnemonic.NOP, [])
-        elif instruction.mnemonic == urcl.Mnemonic.RET:
-            x86_code.add_instruction(x86.Mnemonic.RET, [])
+    if instruction.mnemonic == urcl.Mnemonic.HLT:
+        linux.add_syscall_exit(x86_code, None)
+    elif instruction.mnemonic == urcl.Mnemonic.NOP:
+        x86_code.add_instruction(x86.Mnemonic.NOP, [])
+    elif instruction.mnemonic == urcl.Mnemonic.RET:
+        x86_code.add_instruction(x86.Mnemonic.RET, [])
     else:
-        return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", instruction.line_number, instruction.column_number)
+        assert(False)
     
     return x86_code
 
@@ -100,8 +108,6 @@ def compile_unconditional_jump_instruction(instruction: urcl.InstructionCSTNode,
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.JMP, urcl.Mnemonic.CAL]:
         destination_operand = get_jump_target(instruction)
-        if len(instruction.operands) != 1:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.name.upper()} instruction - found {len(instruction.operands)}, expected 1.", instruction.line_number, instruction.column_number)
         if isinstance(destination_operand, urcl.urclcst.Label):
             if instruction.mnemonic == urcl.Mnemonic.JMP:
                 x86_code.add_instruction(x86.Mnemonic.JMP, [x86.Label(destination_operand.name)])
@@ -110,7 +116,7 @@ def compile_unconditional_jump_instruction(instruction: urcl.InstructionCSTNode,
             else:
                 return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", instruction.line_number, instruction.column_number)
         else:
-            return Traceback.new(f"JMP instruction operand 1 is of incorrect type (expected Label).", instruction.line_number, instruction.column_number)
+            no_translation(instruction)
     
     return x86_code
 
@@ -121,8 +127,6 @@ def compile_two_operand_jump_instruction(instruction: urcl.InstructionCSTNode, e
         destination_operand = get_jump_target(instruction)
         if not isinstance(destination_operand, urcl.urclcst.Label):
             return Traceback.new(f"{instruction.mnemonic.name} instruction operand 1 is of incorrect type (expected label).", instruction.line_number, instruction.column_number)
-        if len(instruction.operands) != 2:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.name} instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)
         x86_source_operand = urcl_operand_to_x86(instruction.operands[1])
         if x86_source_operand is None:
             return Traceback.new("TODO")
@@ -134,7 +138,7 @@ def compile_two_operand_jump_instruction(instruction: urcl.InstructionCSTNode, e
         elif instruction.mnemonic == urcl.Mnemonic.BRP:
             x86_code.add_instruction(x86.Mnemonic.JGE, [x86.Label(destination_operand.name)])
         else:
-            return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", instruction.line_number, instruction.column_number)
+            no_translation(instruction)
     
     return x86_code
 
@@ -145,8 +149,6 @@ def compile_three_operand_jump_instruction(instruction: urcl.InstructionCSTNode,
         destination_operand = get_jump_target(instruction)
         if not isinstance(destination_operand, urcl.urclcst.Label):
             return Traceback.new(f"{instruction.mnemonic.name} instruction operand 1 '{destination_operand}' is of incorrect type (expected label).", instruction.line_number, instruction.column_number)
-        if len(instruction.operands) != 3:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.name} instruction - found {len(instruction.operands)}, expected 3.", instruction.line_number, instruction.column_number)
         x86_source_operand_1 = urcl_operand_to_x86(instruction.operands[1])
         x86_source_operand_2 = urcl_operand_to_x86(instruction.operands[2])
         if x86_source_operand_1 is None:
@@ -163,7 +165,7 @@ def compile_three_operand_jump_instruction(instruction: urcl.InstructionCSTNode,
         elif instruction.mnemonic == urcl.Mnemonic.BNE:
             x86_code.add_instruction(x86.Mnemonic.JNE, [x86.Label(destination_operand.name)])
         else:
-            return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", instruction.line_number, instruction.column_number)
+            no_translation(instruction)
     
     return x86_code
 
@@ -171,8 +173,6 @@ def compile_division_instruction(instruction: urcl.InstructionCSTNode, entry_poi
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.DIV, urcl.Mnemonic.MOD]:
-        if len(instruction.operands) != 3:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 3.", instruction.line_number, instruction.column_number)
         destination = get_x86_destination_register(instruction)
         if not destination:
             return Traceback.new(f"{instruction.mnemonic.value.upper()} instruction received incorrect destination type (expected register).", instruction.line_number, instruction.column_number)
@@ -204,8 +204,6 @@ def compile_out_instruction(instruction: urcl.InstructionCSTNode, entry_point: i
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic == urcl.Mnemonic.OUT:
-        if len(instruction.operands) != 2:
-            return Traceback.new(f"Incorrect number of operands supplied to OUT instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)
         if isinstance(instruction.operands[0].value, urcl.Port):
             port = instruction.operands[0].value
         elif isinstance(instruction.operands[0].value, int):
@@ -240,7 +238,7 @@ def compile_out_instruction(instruction: urcl.InstructionCSTNode, entry_point: i
             string_length_bytes = len(output_string)
             for u32 in bytes_to_stack_ints(output_string):
                 x86_code.add_instruction(x86.Mnemonic.PUSH, [u32])
-        x86_code.add_fwrite_linux_syscall(x86.Register.ESP, string_length_bytes, x86.LINUX_STDOUT)
+        linux.add_syscall_fwrite(x86_code, x86.Register.ESP, string_length_bytes, linux.File.STDOUT)
         x86_code.add_instruction(x86.Mnemonic.ADD, [x86.Register.ESP, uint32_count * 4])
         x86_code.add_instructions_to_restore_general_registers()
 
@@ -250,8 +248,6 @@ def compile_two_operand_arithmetic_instruction(instruction: urcl.InstructionCSTN
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in urcl.TWO_OPERAND_ARITHMETIC_MNEMONICS:
-        if not instruction.operands or len(instruction.operands) > 2:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)
         destination = get_x86_destination_register(instruction)
         if not destination:
             return Traceback.new(f"{instruction.mnemonic.value.upper()} instruction received incorrect operand type (expected register).", instruction.line_number, instruction.column_number)
@@ -276,7 +272,7 @@ def compile_two_operand_arithmetic_instruction(instruction: urcl.InstructionCSTN
             x86_code.add_instruction(x86.Mnemonic.ROL, [destination])
             x86_code.add_instruction(x86.Mnemonic.AND, [destination, 2**31])
         else:
-            return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name}", instruction.line_number, instruction.column_number)
+            no_translation(instruction)
     
     return x86_code
 
@@ -284,8 +280,6 @@ def compile_three_operand_arithmetic_instruction(instruction: urcl.InstructionCS
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS:
-        if len(instruction.operands) != 3:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 3.", instruction.line_number, instruction.column_number)
         destination = get_x86_destination_register(instruction)
         if not destination:
             return Traceback.new(f"{instruction.mnemonic.value.upper()} instruction received incorrect destination type (expected register).", instruction.line_number, instruction.column_number)
@@ -306,7 +300,7 @@ def compile_three_operand_arithmetic_instruction(instruction: urcl.InstructionCS
         if x86_mnemonic:
             x86_code.add_instruction(x86_mnemonic, [destination, source_2.value])
         else:
-            return Traceback.new(f"No x86 translation for for URCL instruction {instruction.mnemonic.name.upper()}", instruction.line_number, instruction.column_number)
+            no_translation(instruction)
     
     return x86_code
 
@@ -314,8 +308,6 @@ def compile_push_instruction(instruction: urcl.InstructionCSTNode, entry_point: 
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.PSH]:
-        if len(instruction.operands) != 1:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 1.", instruction.line_number, instruction.column_number)
         x86_source_operand = urcl_operand_to_x86(instruction.operands[0])
         if x86_source_operand is None:
             return Traceback.new("TODO")
@@ -327,8 +319,6 @@ def compile_pop_instruction(instruction: urcl.InstructionCSTNode, entry_point: i
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.POP]:
-        if len(instruction.operands) != 1:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 1.", instruction.line_number, instruction.column_number)
         x86_register = get_x86_destination_register(instruction)
         if x86_register is None:
             return Traceback.new("TODO")
@@ -340,8 +330,6 @@ def compile_load_instruction(instruction: urcl.InstructionCSTNode, entry_point: 
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.LOD]:
-        if len(instruction.operands) != 2:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 2.", instruction.line_number, instruction.column_number)
         x86_register = get_x86_destination_register(instruction)
         if x86_register is None:
             return Traceback.new(f"{instruction.mnemonic.value.upper()} instruction did not find a register destination.")
@@ -364,7 +352,20 @@ def compile_store_instruction(instruction: urcl.InstructionCSTNode, entry_point:
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.STR]:
-       ...
+        dest = urcl_operand_to_x86(instruction.operands[0])
+        source = urcl_operand_to_x86(instruction.operands[1])
+        if dest is None or source is None:
+            return Traceback.new("TODO")
+        source = source.value
+        dest = dest.value
+            
+        if isinstance(dest, x86.Register):
+            memory = x86.EffectiveAddress(base=dest, scale=4)
+        elif isinstance(dest, x86.EffectiveAddress):
+            memory = source
+        else:
+            memory = x86.EffectiveAddress(displacement=dest)
+        x86_code.add_instruction(x86.Mnemonic.MOV, [dest, memory])
     
     return x86_code
 
@@ -372,8 +373,6 @@ def compile_multiply_instruction(instruction: urcl.InstructionCSTNode, entry_poi
     
     x86_code = x86.Program(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.MLT]:
-        if len(instruction.operands) != 3:
-            return Traceback.new(f"Incorrect number of operands supplied to {instruction.mnemonic.value.upper()} instruction - found {len(instruction.operands)}, expected 3.", instruction.line_number, instruction.column_number)
         destination = get_x86_destination_register(instruction)
         if not destination:
             return Traceback.new(f"{instruction.mnemonic.value.upper()} instruction received incorrect destination type (expected register).", instruction.line_number, instruction.column_number)
@@ -398,19 +397,25 @@ def compile_multiply_instruction(instruction: urcl.InstructionCSTNode, entry_poi
             x86_code.add_instruction(x86.Mnemonic.POP, [x86.Register.EAX])
     
     return x86_code
-"dict[tuple[urcl.Mnemonic], Callable]"
-TRANSLATIONS: list[tuple[list[urcl.Mnemonic], Callable[[urcl.InstructionCSTNode, int], x86.Program | Traceback]]] = [
-    (urcl.ZERO_OPERAND_MNEMONICS, compile_zero_operand_instruction),
-    ([urcl.Mnemonic.JMP, urcl.Mnemonic.CAL], compile_unconditional_jump_instruction),
-    ([urcl.Mnemonic.MLT], compile_multiply_instruction),
-    (urcl.TWO_OPERAND_CONDITION_JUMP_MNEMONICS, compile_two_operand_jump_instruction),
-    (urcl.THREE_OPERAND_CONDITION_JUMP_MNEMONICS, compile_three_operand_jump_instruction),
-    ([urcl.Mnemonic.DIV, urcl.Mnemonic.MOD], compile_division_instruction),
-    ([urcl.Mnemonic.OUT], compile_out_instruction),
-    (urcl.TWO_OPERAND_ARITHMETIC_MNEMONICS, compile_two_operand_arithmetic_instruction),
-    (urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS, compile_three_operand_arithmetic_instruction),
-    ([urcl.Mnemonic.PSH], compile_push_instruction),
-    ([urcl.Mnemonic.POP], compile_pop_instruction),
-    ([urcl.Mnemonic.LOD], compile_load_instruction),
-    ([], compile_store_instruction)
+
+@dataclass
+class InstructionFamily:
+    mnemonics: list[urcl.Mnemonic]
+    compile: Callable[[urcl.InstructionCSTNode, int], x86.Program | Traceback]
+    operand_count: int
+
+TRANSLATIONS: list[InstructionFamily] = [
+    InstructionFamily(urcl.ZERO_OPERAND_MNEMONICS, compile_zero_operand_instruction, 0),
+    InstructionFamily([urcl.Mnemonic.JMP, urcl.Mnemonic.CAL], compile_unconditional_jump_instruction, 1),
+    InstructionFamily([urcl.Mnemonic.MLT], compile_multiply_instruction, 3),
+    InstructionFamily(urcl.TWO_OPERAND_CONDITION_JUMP_MNEMONICS, compile_two_operand_jump_instruction, 2),
+    InstructionFamily(urcl.THREE_OPERAND_CONDITION_JUMP_MNEMONICS, compile_three_operand_jump_instruction, 3),
+    InstructionFamily([urcl.Mnemonic.DIV, urcl.Mnemonic.MOD], compile_division_instruction, 3),
+    InstructionFamily([urcl.Mnemonic.OUT], compile_out_instruction, 2),
+    InstructionFamily(urcl.TWO_OPERAND_ARITHMETIC_MNEMONICS, compile_two_operand_arithmetic_instruction, 2),
+    InstructionFamily(urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS, compile_three_operand_arithmetic_instruction, 3),
+    InstructionFamily([urcl.Mnemonic.PSH], compile_push_instruction, 1),
+    InstructionFamily([urcl.Mnemonic.POP], compile_pop_instruction, 1),
+    InstructionFamily([urcl.Mnemonic.LOD], compile_load_instruction, 2),
+    InstructionFamily([urcl.Mnemonic.STR], compile_store_instruction, 2)
 ]

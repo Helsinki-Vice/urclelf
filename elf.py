@@ -72,7 +72,6 @@ SHT_PROGBITS = 1
 SHT_STRTAB = 3
 SHF_ALLOC = 2
 SHF_EXECINSTR = 4
-LINUX_SEGMENT_START_ADDRESS = 0x8048000
 ELF32_SYMBOL_TABLE_ENTRY_SIZE = 16
 
 class KnownSectionNames(enum.StrEnum):
@@ -271,7 +270,7 @@ class Elf32SymbolTableEntry:
 
 class Elf32Exec:
 
-    def __init__(self, text: bytes, stack_size: int, use_section_header_table:bool=True, address:int=LINUX_SEGMENT_START_ADDRESS) -> None:
+    def __init__(self, text: bytes, stack_size: int, address: int, use_section_header_table:bool=True) -> None:
         
         self.text = text
         self.virtual_address = address
@@ -295,7 +294,7 @@ class Elf32Exec:
             physical_address = 0,
             file_size        = len(self.text),
             memory_size      = len(self.text),
-            flags            = PF_R | PF_X,
+            flags            = PF_R | PF_X | PF_W,
             align            = 0
         )
         stack_program_header = Elf32ProgramHeader(

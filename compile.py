@@ -82,16 +82,14 @@ def bytes_to_stack_ints(value: bytes):
     
     return result
 
-# The rather frightening code below does the majority of
-# the work in translating urcl to x86 assembly. Don't like elif chains? Too bad!
-# TODO: use ast instead of cst for compilation
-# TODO: fix spagetti
 def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNode, entry_point: int) -> x86.Program | Traceback:
 
         x86_code = x86.Program(0, [])
-        for mnemonics, compiler_function in translations.TRANSLATIONS:
-            if instruction.mnemonic in mnemonics:
-                translation = compiler_function(instruction, entry_point)
+        for family in translations.TRANSLATIONS:
+            if instruction.mnemonic in family.mnemonics:
+                if len(instruction.operands) != family.operand_count:
+                    return Traceback.new(f"Incorrect number of operands to {instruction.mnemonic.name.upper()} - found {len(instruction.operands)}, expected {family.operand_count}", line_number=instruction.line_number, column_number=instruction.column_number)
+                translation = family.compile(instruction, entry_point)
                 if isinstance(translation, Traceback):
                     error = translation
                     return error
@@ -149,7 +147,7 @@ def compile_urcl_source_to_flat_binary(source: str, entry_point: int, stack_base
     
     return machine_code
 
-def compile_urcl_to_executable(source: str, stack_size:int=512, small_filesize:bool=False):
+def compile_urcl_to_executable(source: str,  load_address: int, stack_size:int=512, small_filesize:bool=False):
     
     # We need to compile twice because of a chicken-and-egg situation:
     # We can't resolve labels/relatives (and therefore compile) without knowing the entry point,
@@ -161,11 +159,11 @@ def compile_urcl_to_executable(source: str, stack_size:int=512, small_filesize:b
         error = first_pass_binary
         error.elaborate("Unable to generate x86 assembly")
         return error
-    first_pass_executable = elf.Elf32Exec(first_pass_binary, stack_size, use_section_header_table=not small_filesize)
+    first_pass_executable = elf.Elf32Exec(first_pass_binary, stack_size, use_section_header_table=not small_filesize, address=load_address)
     second_pass_binary = compile_urcl_source_to_flat_binary(source, first_pass_executable.entry_point, first_pass_executable.calculate_stack_base_address() + first_pass_executable.stack_size)
     if isinstance(second_pass_binary, Traceback):
         error = second_pass_binary
         error.elaborate("Unable to generate x86 assembly (Unreachable error?!)")
         return error
 
-    return bytes(elf.Elf32Exec(second_pass_binary, stack_size).assemble(use_section_header_table=not small_filesize))
+    return bytes(elf.Elf32Exec(second_pass_binary, stack_size, load_address).assemble(use_section_header_table=not small_filesize))

@@ -76,7 +76,7 @@ THREE_OPERAND_ARITHMETIC_MNEMONICS = [
     Mnemonic.SDIV,
     Mnemonic.BSS
 ]
-
+"""
 @dataclass
 class Headers:
     bits: int
@@ -189,7 +189,7 @@ class JumpInstruction:
             return f"BRANCH to {self.destination} if {self.condition.operand} {self.condition.type.name}"
         else:
             return f"BRANCH TO {self.destination} if {self.condition.operand_1} {self.condition.type.name} {self.condition.operand_2}"
-"""
+
 @dataclass
 class Instruction:
     calculation: Calculation
@@ -198,7 +198,7 @@ class Instruction:
 
     def __str__(self) -> str:
         return f"{self.calculation} (to {self.jump_target}) (if {self.condition})"
-"""
+
 Instruction = typing.Union[Calculation, JumpInstruction, ZeroOperandInstruction]
 class CodePath:
     
@@ -274,3 +274,4 @@ class AST:
             lines.append(str(instruction))
         
         return "\n".join(lines)
+"""

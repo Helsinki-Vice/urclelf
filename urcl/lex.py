@@ -209,13 +209,15 @@ def extract_memory_address_token(source: str) -> TokenParseResult:
 def extract_integer_token(source: str) -> TokenParseResult:
 
     if not source: return TokenParseResult.miss()
+    permitted_number_chars = "0123456789"
     index = 0
     if source[index] == "-":
         index += 1
     if source[index:index+2].lower() in ["0x", "0b", "0o"]:
+        permitted_number_chars += "abcdef"
         index += 2
     while index < len(source):
-        if source[index] not in "0123456789abcdef":
+        if source[index] not in permitted_number_chars:
             break
         index += 1
     
