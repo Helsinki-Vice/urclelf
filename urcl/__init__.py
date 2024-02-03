@@ -13,20 +13,18 @@ from urcl.lex import tokenize, TokenStream
 from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode, OperandType
 from urcl.urclast import TWO_OPERAND_ARITHMETIC_MNEMONICS, TWO_OPERAND_CONDITION_JUMP_MNEMONICS, THREE_OPERAND_CONDITION_JUMP_MNEMONICS, ZERO_OPERAND_MNEMONICS, THREE_OPERAND_ARITHMETIC_MNEMONICS
 
-SYNTAX_ERROR_MESSAGE = "Syntax error"
-
 def parse(source: str):
 
     tokens = tokenize(source)
     if isinstance(tokens, error.Traceback):
         err = tokens
-        err.elaborate(SYNTAX_ERROR_MESSAGE)
+        err.elaborate("Code contains an invalid token")
         return err
     
     cst = urclcst.CST.from_tokens(tokens)
     if isinstance(cst, error.Traceback):
         err = cst
-        err.elaborate(SYNTAX_ERROR_MESSAGE)
+        err.elaborate("Syntax error while forming syntax tree")
         return err
      
     return cst

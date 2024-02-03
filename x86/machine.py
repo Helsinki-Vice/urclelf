@@ -102,19 +102,31 @@ class X86Instruction:
     sib: ScaleIndexByte | None
     displacement: bytes
     immediate: bytes
+    
+    def get_displacement_index(self):
         
+        index = len(bytes(self.prefixes) + bytes(self.opcode))
+        if self.mod_reg_rm:
+            index += len(bytes(self.mod_reg_rm))
+        if self.sib:
+            index += len(bytes(self.sib))
+        
+        return index
+    
+    def get_immediate_index(self):
+        return self.get_displacement_index() + len(self.displacement)
+    
     def __bytes__(self):
 
         machine_code = bytes()
-        if self.prefixes:
-            machine_code += bytes(self.prefixes)
+        machine_code += bytes(self.prefixes)
         machine_code += bytes(self.opcode)
         if self.mod_reg_rm:
             machine_code += bytes(self.mod_reg_rm)
         if self.sib:
             machine_code += bytes(self.sib)
-        machine_code += bytes(self.displacement)
-        machine_code += bytes(self.immediate)
+        machine_code += self.displacement
+        machine_code += self.immediate
 
         return machine_code
 

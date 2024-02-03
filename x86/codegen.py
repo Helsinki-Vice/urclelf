@@ -1,15 +1,12 @@
 from dataclasses import dataclass
-import enum
 import struct
 import math
 from typing import Literal, Self
 from x86.machine import Register, ModRegRM, Opcode, X86Instruction, AddressingMode, InstructionPrefixes, ScaleIndexByte, ThreeBits
-from x86.asm import Mnemonic, EffectiveAddress, ASMInstruction, Program, Label, Operand, Immediate
+from x86.asm import Mnemonic, EffectiveAddress, ASMInstruction, ASMCode, Label, Operand, Immediate
 from error import Traceback
-
-LINUX_WRITE = 4
-LINUX_STDOUT = 1
-LINUX_EXIT = 1
+from x86.modregrm import calculate_modregrm
+from x86.sib import calculate_sib
 
 @dataclass(frozen=True)
 class ImmediateType:
@@ -21,17 +18,7 @@ class RegisterSize:
     size: Literal[8, 16, 32] | None = None
 
 OperandType = RegisterSize | ImmediateType | Register
-"""
-class CodeGenError(enum.Enum):
-    UNKNOWN = enum.auto()
-    WRONG_MNEMONIC = enum.auto()
-    INCORRECT_OPERAND_COUNT = enum.auto()
-    BAD_RM_TYPE = enum.auto()
-    BAD_DISPLACEMENT = enum.auto()
-    BAD_IMMEDIATE = enum.auto()
-    INCORRECT_REGISTER_SIZE = enum.auto()
-    INCORRECT_OPERAND_TYPE = enum.auto()
-"""
+
 def match_operand(operand: Operand, operand_type: OperandType) -> bool:
 
     if isinstance(operand_type, RegisterSize):
@@ -40,11 +27,22 @@ def match_operand(operand: Operand, operand_type: OperandType) -> bool:
         else:
             return True
     elif isinstance(operand_type, ImmediateType):
-        if not isinstance(operand.value, int):
-            return False
-        return True
+        if isinstance(operand.value, int):
+            return True
+        if isinstance(operand.value, Label):
+            return operand_type.size >= 4
+        return False
     else:
         return operand.value == operand_type
+
+@dataclass
+class Relocation:
+    symbol_name: str
+    index: int
+    size: int
+    addend: int
+    is_signed: bool
+    is_relative: bool
 
 @dataclass
 class InstructionEncoding:
@@ -161,111 +159,14 @@ class InstructionEncoding:
 
         return reg, rm
 
-def calculate_mod(rm_operand: Register | EffectiveAddress) -> AddressingMode | None:
-    
-    if isinstance(rm_operand, Register):
-        return AddressingMode.DIRECT
-    if not isinstance(rm_operand.displacement, int):
-        return None
-    elif rm_operand.displacement == 0 or (rm_operand.base is None and rm_operand.index is None and rm_operand.displacement >= -0x80000000 and rm_operand.displacement < 0x80000000):
-        return AddressingMode.INDIRECT
-    elif rm_operand.displacement >= -0x80 and rm_operand.displacement < 0x80:
-        return AddressingMode.INDIRECT_WITH_BYTE_DISPLACEMENT
-    elif rm_operand.displacement >= -0x80000000 and rm_operand.displacement < 0x80000000:
-        return AddressingMode.INDIRECT_WITH_FOUR_BYTE_DISPACEMENT
-    else:
-        return None
-    
-
-def calculate_reg(operand: Register | EffectiveAddress | None, opcode_extention: Literal[0, 1, 2, 3, 4, 5, 6, 7] | None) -> ThreeBits | None:
-    
-    if opcode_extention is not None:
-        return opcode_extention
-    elif isinstance(operand, Register):
-        return operand.value.code
-    elif isinstance(operand, EffectiveAddress):
-        return None
-    else:
-        return None
-
-def get_rm_code(effective_address: EffectiveAddress):
-
-    if effective_address.index is not None:
-        return 4
-    elif effective_address.displacement and (effective_address.base is None):
-        return 5
-    elif effective_address.base:
-        return effective_address.base.value.code
-    else:
-        return None
-
-def calculate_rm(operand: Register | EffectiveAddress | None) -> ThreeBits | None:
-    
-    if isinstance(operand, EffectiveAddress):
-        return get_rm_code(operand)
-    elif isinstance(operand, Register):
-        return operand.value.code
-    else:
-        return None
-
-def calculate_modregrm(register: Register | None, register_or_memory: Register | EffectiveAddress | None, opcode_extention: ThreeBits | None) -> ModRegRM | None:
-    
-    if register_or_memory is None:
-        return None
-    mod = calculate_mod(register_or_memory)
-    reg = calculate_reg(register, opcode_extention)
-    rm = calculate_rm(register_or_memory)
-    if mod is None or reg is None or rm is None:
-        return None
-    return ModRegRM(mod, reg, rm)
-
-def calculate_sib_scale(effective_address: EffectiveAddress):
-
-    scale = round(math.log2(effective_address.scale))
-    # Don't change to "scale in [0, 1, 2, 3]"" or pylance will get mad 
-    if scale == 0 or scale == 1 or scale == 2 or scale == 3:
-        return scale
-    
-def calculate_sib_index(effective_address: EffectiveAddress):
-
-    if effective_address.base == Register.ESP and effective_address.index is None:
-        return 4 # Special case for [esp] addressing
-    if effective_address.index is None:
-        return None
-    index = effective_address.index.value.code
-    if index == 4: # Technically it's register eiz but that's too bad
-        return None
-    
-    return index
-
-def calculate_sib_base(effective_address: EffectiveAddress, mod: AddressingMode) -> Literal[0, 1, 2, 3, 4, 5, 6, 7, None]:
-
-    if effective_address.base is None:
-        return 5 # Tells the cpu to look for 32 bit displacement
-    
-    return effective_address.base.value.code
-
-def calculate_sib(effective_address: EffectiveAddress | Register | None, mod_reg_rm: ModRegRM | None) -> ScaleIndexByte | None:
-
-    if mod_reg_rm is None:
-        return None
-    if not (mod_reg_rm.mod != AddressingMode.DIRECT and mod_reg_rm.rm == 4):
-        return None
-    if not isinstance(effective_address, EffectiveAddress):
-        return None
-    scale = calculate_sib_scale(effective_address)
-    index = calculate_sib_index(effective_address)
-    base = calculate_sib_base(effective_address, mod_reg_rm.mod)
-    
-    if scale is None or index is None or base is None:
-        return None
-    return ScaleIndexByte(scale, index, base)
-
-def calculate_displacement(effective_address: Register | EffectiveAddress | None, mod_reg_rm: ModRegRM | None, sib: ScaleIndexByte | None):
+def calculate_displacement(effective_address: Register | EffectiveAddress | None, mod_reg_rm: ModRegRM | None, sib: ScaleIndexByte | None) -> bytes | Relocation:
 
     if not isinstance(effective_address, EffectiveAddress):
         return bytes()
-    displacement = effective_address.displacement
+    if isinstance(effective_address.displacement, Label):
+        return Relocation(effective_address.displacement.name, 0, 4, 0, False, False)
+    else:
+        displacement = effective_address.displacement
     if mod_reg_rm:
         mod = mod_reg_rm.mod
         rm = mod_reg_rm.rm
@@ -278,39 +179,54 @@ def calculate_displacement(effective_address: Register | EffectiveAddress | None
         else:
             return bytes()
     
-    assert(not sib)
+    assert not sib
     
     return bytes()
 
-def encode_immediate(immediate_value: Immediate | None, immediate_type: ImmediateType | None, immediate_address: int):
+def int_as_bytes(value: int, size: Literal[8, 16, 32], is_signed: bool) -> bytes | Traceback:
 
-    if immediate_type is None:
+    total_values = 2**size
+    if is_signed:
+        min_value = -(total_values // 2)
+        max_value = (total_values // 2) - 1
+    else:
+        min_value = 0
+        max_value = total_values - 1
+    
+    if (value < min_value) or (value > max_value):
+        return Traceback.new(f"Value {value} is not in the range {min_value:#x} thru {max_value:#x})")
+    
+    symbol = {8: "B", 16: "H", 32: "I"}[size]
+    symbol = symbol.lower() if is_signed else symbol
+    
+    return struct.pack(f"<{symbol}", value)
+
+def encode_immediate(immediate_value: Immediate | None, immediate_type: ImmediateType | None, immediate_address: int) -> bytes | Relocation | Traceback:
+
+    if immediate_type is None or immediate_value is None:
         return bytes()
     if not isinstance(immediate_value, int):
-        return Traceback.new(f"Label '{immediate_value}' not yet resolved (?)")
+        return Relocation(immediate_value.name, 0, immediate_type.size, 0, True, immediate_type.is_relative)
+        #return Traceback.new(f"Label '{immediate_value}' not yet resolved (?)")
+        immediate_value = 0
     instruction_end_address = immediate_address + immediate_type.size
     immediate_value_relative = immediate_value - instruction_end_address if immediate_type.is_relative else immediate_value
-    if immediate_type.size == 1:
-        if ((immediate_value_relative < -0x80 or immediate_value_relative >= 0x0100) and not immediate_type.is_relative) or ((immediate_value_relative < -0x80 or immediate_value_relative >= 0x80) and immediate_type.is_relative):
-            return Traceback.new(f"Immediate {immediate_value} is not in 8-bit range OR relative immediate {immediate_value_relative} is not in signed 8-bit range.")
-        return struct.pack("<b", ((immediate_value_relative + 128) % 256) - 128)
-    elif immediate_type.size == 2:
-        if (immediate_value_relative < -0x8000 or immediate_value_relative >= 0x8000):
-            return Traceback.new(f"Immediate {immediate_value} is not in 16-bit range OR relative immediate {immediate_value_relative} is not in signed 16-bit range.")
-        return struct.pack("<h", immediate_value_relative)
-    else:
-        if ((immediate_value_relative < -0x80000000 or immediate_value_relative >= 0x0100000000) and not immediate_type.is_relative) or ((immediate_value_relative < -0x80000000 or immediate_value_relative >= 0x80000000) and immediate_type.is_relative):
-            return Traceback.new(f"Immediate {immediate_value} is not in 32-bit range OR relative immediate {immediate_value_relative} is not in signed 32-bit range.")
-        return struct.pack("<i", ((immediate_value_relative + 2**31) % 2**32) - 2**31)
+    binary = int_as_bytes(immediate_value_relative, immediate_type.size * 8, immediate_type.is_relative)
+    if isinstance(binary, Traceback):
+        error = binary
+        error.elaborate("Immediate out of range")
+        return error
+    
+    return binary
 
+def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncoding, instruction_address: int) -> tuple[X86Instruction, list[Relocation], dict[str, int]] | Traceback:
 
-def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncoding, instruction_address: int) -> X86Instruction | Traceback:
     if instruction.mnemonic != encoding.mnemonic:
         return Traceback.new(f"Wrong Mnemonic {instruction.mnemonic} != {encoding.mnemonic}")
     if len(instruction.operands) != len(encoding.operands):
         return Traceback.new(f"Incorrect operand count of {len(instruction.operands)}, expected {len(encoding.operands)}")
     
-    prefixes = InstructionPrefixes(None, False, False, None)
+    prefixes = InstructionPrefixes.none()
     
     regrm_operands = encoding.get_regrm_operands(instruction, encoding.opcode.get_direction_bit())
     if isinstance(regrm_operands, Traceback):
@@ -323,9 +239,19 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
     else:
         register, register_or_memory = regrm_operands
         mod_reg_rm = calculate_modregrm(register, register_or_memory, encoding.opcode_extention)
+        if isinstance(mod_reg_rm, Traceback):
+            error = mod_reg_rm
+            error.elaborate("Bad modregrm field")
+            return error
     sib = calculate_sib(register_or_memory, mod_reg_rm)
     
     displacement = calculate_displacement(register_or_memory, mod_reg_rm, sib)
+    if isinstance(displacement, Relocation):
+        displacement_relocation = displacement
+        displacement_bytes = bytes([0] * displacement.size)
+    else:
+        displacement_bytes = displacement
+        displacement_relocation = None
     
     instruction_address += len(bytes(prefixes))
     instruction_address += len(bytes(encoding.opcode))
@@ -333,19 +259,36 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
         instruction_address += len(bytes(mod_reg_rm))
     if sib:
         instruction_address += len(bytes(sib))
-    instruction_address += len(displacement)
+    instruction_address += len(displacement_bytes)
 
     immediate = encode_immediate(instruction.get_immediate(), encoding.get_immediate(), instruction_address)
-    if isinstance(immediate, Traceback):
+    if isinstance(immediate, Relocation):
+        immediate_relocation = immediate
+        #fixme = encode_immediate(immediate_relocation.addend, encoding.get_immediate(), instruction_address)
+        #assert isinstance(fixme, bytes)
+        immediate_bytes = bytes.fromhex("fcffffff")
+    elif isinstance(immediate, Traceback):
         error = immediate
         error.elaborate(f"Bad immediate {instruction.get_immediate()}")
         return error
-    
+    else:
+        immediate_relocation = None
+        immediate_bytes = bytes(immediate)
     for index in range(len(encoding.operands)):
         if not match_operand(instruction.operands[index], encoding.operands[index]):
             return Traceback.new(f"Operand '{instruction.operands[index]}' is not of the expected type.")
 
-    return X86Instruction(prefixes, encoding.opcode, mod_reg_rm, sib, displacement, immediate)
+    machine_instruction = X86Instruction(prefixes, encoding.opcode, mod_reg_rm, sib, displacement_bytes, immediate_bytes)
+    relocations = []
+    if displacement_relocation:
+        displacement_relocation.index = machine_instruction.get_displacement_index()
+        relocations.append(displacement_relocation)
+    if immediate_relocation:
+        immediate_relocation.index = machine_instruction.get_immediate_index()
+        if immediate_relocation.is_relative:
+            immediate_relocation.addend = -(len(bytes(machine_instruction)) - machine_instruction.get_immediate_index())
+        relocations.append(immediate_relocation)
+    return machine_instruction, relocations, {}
 
 @dataclass
 class CodeGenIteration:
@@ -356,7 +299,7 @@ class CodeGenIteration:
     labels: dict[str, int]
 
     @classmethod
-    def from_assembly(cls, program: Program) -> Self:
+    def from_assembly(cls, program: ASMCode) -> Self:
 
         instructions: list[ASMInstruction | Label] = []
         labels: dict[str, int] = {}
@@ -365,7 +308,7 @@ class CodeGenIteration:
             if isinstance(instruction, Label):
                 labels.update({instruction.name: 0})
         
-        return CodeGenIteration(program.entry_point, instructions, [0] * len(instructions), [0] * len(instructions), labels)
+        return cls(program.entry_point if program.entry_point else 0, instructions, [0] * len(instructions), [0] * len(instructions), labels)
     
     def as_bytes(self):
 
@@ -384,11 +327,11 @@ class CodeGenIteration:
                 else:
                     instruction_with_labels_resolved.operands.append(operand)
             machine_instruction = encode(instruction_with_labels_resolved, current_address)
-            if not isinstance(machine_instruction, X86Instruction):
+            if isinstance(machine_instruction, Traceback):
                 machine_instruction.elaborate(f"Unable to encode instruction '{instruction}'")
                 return machine_instruction
-            machine_code_bytes += bytes(machine_instruction)
-            current_address += len(bytes(machine_instruction))
+            machine_code_bytes += bytes(machine_instruction[0])
+            current_address += len(bytes(machine_instruction[0]))
         
         return machine_code_bytes
 
@@ -416,43 +359,56 @@ class CodeGenIteration:
                 else:
                     instruction_with_labels_resolved.operands.append(operand)
             machine_instruction = encode(instruction_with_labels_resolved, current_address)
-            if not isinstance(machine_instruction, X86Instruction):
+            if isinstance(machine_instruction, Traceback):
                 machine_instruction.elaborate(f"Unable to encode instruction '{instruction}'")
                 return machine_instruction
-            machine_code_bytes = bytes(machine_instruction)
+            machine_code_bytes = bytes(machine_instruction[0])
             next_instruction_addresses.append(current_address)
             current_address += len(machine_code_bytes)
             next_instruction_sizes.append(len(machine_code_bytes))
 
-        return CodeGenIteration(self.origin, next_instructions, next_instruction_addresses, next_instruction_sizes, next_labels)
+        return self.__class__(self.origin, next_instructions, next_instruction_addresses, next_instruction_sizes, next_labels)
 
-def assemble(program: Program) -> bytes | Traceback:
+
+@dataclass
+class CodegenOutput:
+    binary: bytes
+    relocations: list[Relocation]
+    labels: dict[str, int]
+
+    def get_undefined_label_names(self):
+
+        undefined_symbol_names: list[str] = []
+        for relocation in self.relocations:
+            if relocation.symbol_name not in self.labels.keys():
+                undefined_symbol_names.append(relocation.symbol_name)
+
+        return undefined_symbol_names
+
+
+def assemble(program: ASMCode) -> CodegenOutput | Traceback:
     
-    last_iteration = CodeGenIteration.from_assembly(program)
-    current_iteration = None
-    iteration_count = 0
-    while current_iteration != last_iteration:
-        if current_iteration:
-            last_iteration = current_iteration
-        current_iteration = last_iteration.next()
-        if isinstance(current_iteration, Traceback):
-            error = current_iteration
+    program_bytes = bytes()
+    relocations: list[Relocation] = []
+    labels: dict[str, int] = {}
+    for instruction in program.code:
+        if isinstance(instruction, Label):
+            labels.update({instruction.name: len(program_bytes)})
+            continue
+        encoded = encode(instruction, 0)
+        if isinstance(encoded, Traceback):
+            error = encoded
             error.elaborate("Code does not compile")
             return error
-        if iteration_count > 8:
-            return Traceback.new("Codegen took too long, aborted.")
-        if isinstance(current_iteration, bytes):
-            return current_iteration
-        iteration_count += 1
-    
-    assert(current_iteration is not None)
-    as_bytes = current_iteration.as_bytes()
-    assert(not isinstance(as_bytes, Traceback))
-    return as_bytes
+        for relocation in encoded[1]:
+            relocation.index += len(program_bytes)
+        program_bytes += bytes(encoded[0])
+        relocations += encoded[1]
+    return CodegenOutput(program_bytes, relocations, labels)
 
 def load_instruction_set_data() -> list[InstructionEncoding] | Traceback:
 
-    with open("./x86/isa_data.txt", "r") as file:
+    with open("./x86/isa_data_x86.txt", "r") as file:
         formats = file.read().splitlines()
         encodings: list[InstructionEncoding] = []
         for format in formats:
@@ -466,21 +422,32 @@ def load_instruction_set_data() -> list[InstructionEncoding] | Traceback:
         return encodings
 
 
-def encode(instruction: ASMInstruction, instruction_address: int) -> X86Instruction | Traceback:
+def encode(instruction: ASMInstruction, instruction_address: int) -> tuple[X86Instruction, list[Relocation], dict[str, int]] | Traceback:
+
     instruction_formats = load_instruction_set_data()
     if isinstance(instruction_formats, Traceback):
         error = instruction_formats
         error.elaborate("x86 ISA data loading failed")
         return error
-    smallest_encoding: "X86Instruction | None" = None
+    smallest_encoding: tuple[X86Instruction, list[Relocation], dict[str, int]] | None = None
+    failures: list[Traceback] = []
     for format in instruction_formats:
-        encoded = encode_instruction_using_encoding(instruction, format, instruction_address)
-        if isinstance(encoded, X86Instruction):
+        encode_result = encode_instruction_using_encoding(instruction, format, instruction_address)
+        if isinstance(encode_result, Traceback):
+            if instruction.mnemonic == format.mnemonic:
+                encode_result.elaborate(f"Failure to encode {instruction.mnemonic} with opcode {bytes(format.opcode).hex()}")
+                failures.append(encode_result)
+        else:
+            encoded_instruction, relocations, labels = encode_result
             if not smallest_encoding:
-                smallest_encoding = encoded
-            if len(bytes(encoded)) < len(bytes(smallest_encoding)):
-                smallest_encoding = encoded
+                smallest_encoding = encoded_instruction, relocations, labels
+            if len(bytes(encoded_instruction)) < len(bytes(smallest_encoding[0])):
+                smallest_encoding = encoded_instruction, relocations, labels
     if smallest_encoding:
         return smallest_encoding
-    
-    return Traceback.new(f"Cannot encode instruction '{instruction}'")
+    msg = f"Cannot encode instruction '{instruction}'\n"
+    for failure in failures:
+        for megg in failure.errors:
+            msg += megg.message + "\n"
+        msg += "\n"
+    return Traceback.new(msg)

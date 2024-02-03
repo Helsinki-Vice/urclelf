@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import enum
 from typing import Literal, Self
 from x86.machine import Register
+from error import Traceback
 
 class Mnemonic(enum.StrEnum):
     ADC = "adc"
@@ -76,7 +77,7 @@ class Label:
     name: str
 
     def __str__(self) -> str:
-        return f"{self.name}:"
+        return f"{self.name}"
 
 class Segment(enum.StrEnum):
     DEFAULT = ""
@@ -129,6 +130,22 @@ class Operand:
         else:
             return None
     
+    def as_memory(self, scale: Literal[1, 2, 4], offset: Register | int) -> EffectiveAddress:
+        if isinstance(self.value, Register):
+            if isinstance(offset, Register):
+                memory = EffectiveAddress(base=self.value, scale=scale, index=offset)
+            else:
+                memory = EffectiveAddress(base=self.value, scale=scale, displacement=offset)
+        elif isinstance(self.value, EffectiveAddress):
+            memory = self.value
+        else:
+            if isinstance(offset, Register):
+                memory = EffectiveAddress(displacement=self.value)
+            else:
+                memory = EffectiveAddress(displacement=self.value)
+        
+        return memory
+    
     def __str__(self) -> str:
         return str(self.value)
 
@@ -153,11 +170,11 @@ class ASMInstruction:
         return result
 
 
-class Program:
+class ASMCode:
 
-    def __init__(self, entry_point: int, code: list[ASMInstruction | Label]) -> None:
+    def __init__(self, origin: int | None, code: list[ASMInstruction | Label]) -> None:
 
-        self.entry_point = entry_point
+        self.entry_point = origin
         self.code = code
     
     def add_instruction(self, mnemonic: Mnemonic, operands: list[EffectiveAddress | Register | Immediate]):
@@ -185,5 +202,49 @@ class Program:
         self.add_instruction(Mnemonic.POP, [Register.EAX])
     
     def __eq__(self, other: Self):
-
         return self.entry_point == other.entry_point and self.code == other.code
+    
+    def __str__(self) -> str:
+
+        lines: list[str] = []
+        for instruction in self.code:
+            if isinstance(instruction, Label):
+                lines.append(f"{instruction}:")
+            else:
+                lines.append(str(instruction))
+        return "\n".join(lines)
+
+def sum_into_effective_address(values: list[int | Label | Register]) -> EffectiveAddress | Traceback:
+
+    registers: list[Register] = []
+    displacement = 0
+    symbol: Label | None = None
+    for value in values:
+        if isinstance(value, int):
+            displacement += value
+        elif isinstance(value, Register):
+            registers.append(value)
+        else:
+            if symbol is None:
+                symbol = value
+            else:
+                return Traceback.new(f"Effective address cannot contain two symbol references ('{symbol.name}' and '{value.name}')")
+    
+    if displacement and symbol:
+        Traceback.new(f"Effective address that contain memory literal cannot also have symbolic reference to '{symbol.name}'")
+    if symbol:
+        displacement = symbol
+    
+    base = None
+    index = None
+    if len(registers) == 0:
+        pass
+    elif len(registers) == 1:
+        base = registers[0]
+    elif len(registers) == 2:
+        base = registers[0]
+        index = registers[1]
+    else:
+        return Traceback.new("Effective address cannot contain more than two registers")
+    
+    return EffectiveAddress(base=base, index=index, displacement=displacement)

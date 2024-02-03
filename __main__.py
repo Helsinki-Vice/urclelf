@@ -1,51 +1,78 @@
-import subprocess
 import argparse
 import sys
 import os
 import pathlib
+from dataclasses import dataclass
 
-old_cwd = os.getcwd()
-stay = pathlib.Path(__file__).parent.resolve()
-os.chdir(stay)
+OLD_CWD = pathlib.Path(os.getcwd()).resolve()
+CURRENT_DIR = pathlib.Path(__file__).parent.resolve()
+LIB_DIR = CURRENT_DIR.joinpath("lib").resolve().relative_to(CURRENT_DIR).resolve()
+BIN_DIR = CURRENT_DIR.joinpath("bin").resolve().relative_to(CURRENT_DIR).resolve()
+os.chdir(CURRENT_DIR)
 
 from compile import compile_urcl_to_executable
-import linux
+from elf import Elf32
+import target
+import x86
+from error import Traceback
 
-def command_line_compile(source_path: str, output_path: str, small_file: bool, run: bool, stack_size: int, load_address: int):
+@dataclass
+class CommandLineArguments:
+    source_file: str
+    output_file: str
+    executable_format: target.ExecutableFormat
+    is_main: bool
+
+def command_line_compile(source_path: str, options: CommandLineArguments):
 
     with open(source_path, "r") as file:
-        program = compile_urcl_to_executable(file.read(), small_filesize=small_file, stack_size=stack_size, load_address=load_address)
-        if not isinstance(program, bytes):
+        program = compile_urcl_to_executable(
+            file.read(),
+            target.CompileOptions(
+                target=target.Target(target.Isa.X86, target.ByteOrder.LITTLE, target.OsAbi.UNIX),
+                executable_type=target.ExecutableType.OBJECT,
+                executable_format=options.executable_format,
+                is_main=options.is_main
+            )
+        )
+        if isinstance(program, Elf32):
+            bytes_for_file = bytes(program)
+        elif isinstance(program, x86.CodegenOutput):
+            bytes_for_file = program.binary
+        else:
             print(program)
             exit()
-        else:
-            os.system(f"chmod 777 {output_path}")
-            with open(output_path, "w+b") as file:
-                file.write(program)
-    if run:
-        os.system(f"chmod 777 {output_path}")
-        return_code = subprocess.run(output_path)
-        print(f"(returned {return_code.returncode})")
+        with open(options.output_file, "w+b") as file:
+            file.write(bytes_for_file)
 
 def main():
+
     argument_parser = argparse.ArgumentParser(description="Compiles URCL code to x86 executables.")
-    argument_parser.add_argument("source_file", nargs="?")
+    argument_parser.add_argument("source_file")
     argument_parser.add_argument("-o", dest="output_file")
-    argument_parser.add_argument("-Os", "--no_sections", dest="no_sections", action="store_true", help="reduce filesize by not including section header table")
-    argument_parser.add_argument("-r", "--autorun", dest="autorun", action="store_true", help="run the file automaticly after compiling")
-    argument_parser.add_argument("-stack", nargs="?", type=int, help="size of the stack", default=512)
-    argument_parser.add_argument("-addr", nargs="?", type=int, help="address where the program loads", default=linux.SEGMENT_START_ADDRESS)
+    argument_parser.add_argument("-f", dest="executable_format", default="elf")
+    argument_parser.add_argument("-lib", dest="lib", action="store_true", help="pass this if this file is not the entry point.")
     k = argument_parser.parse_args(sys.argv[1:])
-    if k.source_file:
-        source = k.source_file
+    if k.output_file is None:
+        filename = k.source_file.split("/")[-1].split(".")[0] + ".o"
+        output_path = BIN_DIR.joinpath(filename).resolve().relative_to(BIN_DIR).resolve()
+        k.output_file = str(output_path)
+    
+    if k.executable_format.lower() == "bin":
+        executable_format = target.ExecutableFormat.FLAT
+    elif k.executable_format.lower() in ["elf", None]:
+        executable_format = target.ExecutableFormat.ELF
+    elif k.executable_format.lower() == "exe":
+        executable_format = target.ExecutableFormat.MS_PE
     else:
-        source = "./programs/hello_world.urcl"
-    if k.output_file:
-        output = k.output_file
-    else:
-        output = "./bin/" + source.split("/")[-1].split(".")[0]
-    assert(isinstance(source, str))
-    assert(isinstance(output, str))
-    command_line_compile(source, output, small_file=k.no_sections,run=k.autorun, stack_size=k.stack, load_address=k.addr)
+        print(f"Executable file format '{k.exec_file_type.lower()}' not known.")
+        exit()
+    k = CommandLineArguments(
+        source_file=k.source_file,
+        output_file=k.output_file,
+        executable_format=executable_format,
+        is_main=not k.lib
+    )
+    command_line_compile(k.source_file, k)
 
 main()

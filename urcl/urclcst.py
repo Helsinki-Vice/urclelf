@@ -1,11 +1,11 @@
 "This module takes a stream of URCL tokens and parses it into a concrete syntax tree"
 import enum
 from dataclasses import dataclass
-from typing import Union, Type, Self, Generic, TypeVar
+from typing import Union, Self, Generic, TypeVar
 
 from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate, BasePointer, StackPointer
 import urcl.lex
-from error import Traceback, Message
+from error import Traceback
 
 T = TypeVar("T")
 @dataclass
@@ -34,7 +34,13 @@ class OperandCSTNode:
     column_number: int
 
     def __str__(self) -> str:
-        return str(self.value)
+
+        if isinstance(self.value, str):
+            return f'"{self.value}"'
+        if isinstance(self.value, list):
+            return f"[{' '.join([str(value) for value in self.value])}]"
+        else:
+            return str(self.value)
 
 @dataclass
 class OperandParseResult:
@@ -133,16 +139,16 @@ class InstructionCSTNode:
         self.column_number = column_number
     
     @classmethod
-    def parse(cls, tokens: urcl.lex.TokenStream) -> "InstructionCSTNode | Traceback":
+    def parse(cls, tokens: urcl.lex.TokenStream) -> Self | Traceback:
 
         if not tokens:
-            return Traceback([Message("Instruction must not be empty.", 0, 0)], [])
+            return Traceback.new("Instruction must not be empty.")
         if not tokens.tokens[0].value:
-            return Traceback([Message("Instruction must have a mnemoric", tokens.tokens[0].line_number, tokens.tokens[0].column_number)], [])
+            return Traceback.new("Instruction must have a mnemoric", tokens.tokens[0].line_number, tokens.tokens[0].column_number)
         try:
             mnemonic = Mnemonic(str(tokens.tokens[0].value).lower())
         except ValueError:
-            return Traceback([Message(f"Unknown mnemonic '{tokens.tokens[0].value}'", tokens.tokens[0].line_number, tokens.tokens[0].column_number)], [])
+            return Traceback.new(f"Unknown mnemonic '{tokens.tokens[0].value}'", tokens.tokens[0].line_number, tokens.tokens[0].column_number)
         
         operands: list[OperandCSTNode] = []
         index = 1
@@ -152,30 +158,13 @@ class InstructionCSTNode:
                 operands.append(result.data)
                 index += result.tokens_consumed
             elif isinstance(result.data, str):
-                error = Traceback([Message(result.data, tokens.tokens[index].line_number, tokens.tokens[index].column_number)], [])
+                error = Traceback.new(result.data, tokens.tokens[index].line_number, tokens.tokens[index].column_number)
                 error.elaborate("Invalid operand")
                 return error
             else:
-                return Traceback([Message("Invalid operand", tokens.tokens[index].line_number, tokens.tokens[index].column_number)], [])
+                return Traceback.new("Invalid operand", tokens.tokens[index].line_number, tokens.tokens[index].column_number)
         
         return InstructionCSTNode(mnemonic, operands, tokens.tokens[0].line_number, tokens.tokens[0].column_number)
-    """
-    def get_jump_target(self):
-
-        if self.mnemonic not in BRANCH_MNEMONICS:
-            return None
-        if not self.operands:
-            return None
-        
-        return self.operands[0]
-    
-    def get_destination_register(self):
-
-        if not self.operands:
-            return None
-        if isinstance(self.operands[0], GeneralRegister):
-            return self.operands[0]
-    """
     
     def __str__(self) -> str:
         
@@ -194,7 +183,7 @@ class CST:
         self.lines: list[Line] = []
     
     @classmethod
-    def from_tokens(cls, source: urcl.lex.TokenStream) -> "CST | Traceback":
+    def from_tokens(cls, source: urcl.lex.TokenStream) -> Self | Traceback:
 
         cst = CST()
         macros: dict[str, list[urcl.lex.Token]] = {}
@@ -206,21 +195,21 @@ class CST:
             
             if tokens[0].type == urcl.lex.TokenType.LABEL:
                 if not tokens[0].value:
-                    return Traceback([Message(f"Label must not be empty", tokens[0].line_number, tokens[0].column_number)], [])
+                    return Traceback.new(f"Label must not be empty", tokens[0].line_number, tokens[0].column_number)
                 if len(tokens) > 1:
-                    return Traceback([Message(f"Unexpected {tokens[1].type.value} after label .{tokens[0].value}", tokens[1].line_number, tokens[1].column_number)], [])
+                    return Traceback.new(f"Unexpected {tokens[1].type.value} after label .{tokens[0].value}", tokens[1].line_number, tokens[1].column_number)
                 cst.lines.append(Terminal(urcl.types.Label(str(tokens[0].value)), tokens[0].line_number, tokens[0].column_number))
                 continue
 
             elif tokens[0].type == urcl.lex.TokenType.MACRO:
                 if not isinstance(tokens[0].value, str):
-                    return Traceback([Message(f"Malformed macro token has non-str value (?)", tokens[0].line_number, tokens[0].column_number)], [])
+                    return Traceback.new(f"Malformed macro token has non-str value (?)", tokens[0].line_number, tokens[0].column_number)
                 if tokens[0].value.upper() != "DEFINE":
-                    return Traceback([Message(f"Top-level macro token must have value of @DEFINE, found @{tokens[0].value.upper()}", tokens[0].line_number, tokens[0].column_number)], [])
+                    return Traceback.new(f"Top-level macro token must have value of @DEFINE, found @{tokens[0].value.upper()}", tokens[0].line_number, tokens[0].column_number)
                 if len(tokens) <3: # ❤
-                    return Traceback([Message(f"Macro definition is to short, use the syntax @DEFINE WORD DEFINITION", tokens[0].line_number, tokens[0].column_number)], [])
+                    return Traceback.new(f"Macro definition is to short, use the syntax @DEFINE WORD DEFINITION", tokens[0].line_number, tokens[0].column_number)
                 if tokens[1].type != urcl.lex.TokenType.IDENTIFIER:
-                    return Traceback([Message(f"Expected identifier, found {tokens[1].type.value}", tokens[1].line_number, tokens[1].column_number)], [])
+                    return Traceback.new(f"Expected identifier, found {tokens[1].type.value}", tokens[1].line_number, tokens[1].column_number)
                 macros.update({str(tokens[1].value): tokens[2:]})
                 continue
 

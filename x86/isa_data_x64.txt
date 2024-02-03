@@ -1,0 +1,209 @@
+00: add r r
+01: add r r
+02: add r r
+03: add r r
+04: add al i8
+05: add eax i32
+08: or r r
+09: or r r
+0a: or r r
+0b: or r r
+0c: or al i8
+0d: or eax i32
+20: and r r
+21: and r r
+22: and r r
+23: and r r
+24: and al i8
+25: and eax i32
+28: sub r r
+29: sub r r
+2a: sub r r
+2b: sub r r
+2c: sub al i8
+2d: sub eax i32
+30: xor r r
+31: xor r r
+32: xor r r
+33: xor r r
+34: xor al i8
+35: xor eax i32
+38: cmp r r
+39: cmp r r
+3a: cmp r r
+3b: cmp r r
+3c: cmp al i8
+3d: cmp eax i32
+50: push rax
+51: push rcx
+52: push rdx
+53: push rbx
+54: push rsp
+55: push rbp
+56: push rsi
+57: push rdi
+58: pop rax
+59: pop rcx
+5a: pop rdx
+5b: pop rbx
+5c: pop rsp
+5d: pop rbp
+5e: pop rsi
+5f: pop rdi
+68: push i32
+69: imul r32 r32 i32
+6a: push i8
+6B: imul r32 r32 i32
+70: jo rel8
+71: jno rel8
+72: jb rel8
+73: jae rel8
+74: je rel8
+75: jne rel8
+76: jbe rel8
+77: ja rel8
+78: js rel8
+79: jns rel8
+7a: jp rel8
+7b: jnp rel8
+7c: jl rel8
+7d: jge rel8
+7e: jle rel8
+7f: jg rel8
+80.0: add r8 i8
+80.1: or r8 i8
+80.2: adc r8 i8
+80.3: sbb r8 i8
+80.4: and r8 i8
+80.5: sub r8 i8
+80.6: xor r8 i8
+80.7: cmp r8 i8
+81.0: add r32 i32
+81.1: or r32 i32
+81.2: adc r32 i32
+81.3: sbb r32 i32
+81.4: and r32 i32
+81.5: sub r32 i32
+81.6: xor r32 i32
+81.7: cmp r32 i32
+84: test r8 r8
+85: test r32 r32
+86: xchg r8 r8
+87: xchg r32 r32
+88: mov r r
+89: mov r r
+8a: mov r r
+8b: mov r r
+8d: lea r32 r32
+8f.0: pop r32
+90: nop
+90: xchg eax eax
+91: xchg ecx eax
+92: xchg edx eax
+93: xchg ebx eax
+94: xchg esp eax
+95: xchg ebp eax
+96: xchg esi eax
+97: xchg edi eax
+98: cwde
+99: cwd
+b0: mov al i8
+b1: mov cl i8
+b2: mov dl i8
+b3: mov bl i8
+b4: mov ah i8
+b5: mov ch i8
+b6: mov dh i8
+b7: mov bh i8
+b8: mov eax i32
+b9: mov ecx i32
+ba: mov edx i32
+bb: mov ebx i32
+bc: mov esp i32
+bd: mov ebp i32
+be: mov esi i32
+bf: mov edi i32
+c0.0: rol r8 i8
+c0.1: ror r8 i8
+c0.2: rcl r8 i8
+c0.3: rcr r8 i8
+c0.4: shl r8 i8
+c0.5: shr r8 i8
+c0.6: sal r8 i8
+c0.7: sar r8 i8
+c1.0: rol r32 i8
+c1.1: ror r32 i8
+c1.2: rcl r32 i8
+c1.3: rcr r32 i8
+c1.4: shl r32 i8
+c1.5: shr r32 i8
+c1.6: sal r32 i8
+c1.7: sar r32 i8
+c2: ret i16
+c3: ret
+c6.0: mov r8 i8
+c7.0: mov r32 i32
+cd: int i8
+d2.0: rol r8 cl
+d2.1: ror r8 cl
+d2.2: rcl r8 cl
+d2.3: rcr r8 cl
+d2.4: shl r8 cl
+d2.5: shr r8 cl
+d2.6: sal r8 cl
+d2.7: sar r8 cl
+d3.0: rol r32 cl
+d3.1: ror r32 cl
+d3.2: rcl r32 cl
+d3.3: rcr r32 cl
+d3.4: shl r32 cl
+d3.5: shr r32 cl
+d3.6: sal r32 cl
+d3.7: sar r32 cl
+d6: salc
+e0: loopnz rel8
+e1: loopz rel8
+e2: loop rel8
+e8: call rel32
+e9: jmp rel32
+ea: jmpf rel32
+eb: jmp rel8
+f6.0: test r8 i8
+f6.1: test r8 i8
+f6.2: not r8
+f6.3: neg r8
+f6.4: mul al
+f6.5: imul al
+f6.6: div r8
+f6.7: idiv r8
+f7.2: not r32
+f7.3: neg r32
+f7.4: mul r32
+f7.5: imul r32
+f7.6: div r32
+f7.7: idiv r32
+fe.0: inc r32
+fe.1: dec r32
+ff.0: inc r32
+ff.1: dec r32
+ff.2: call r32
+ff.3: callf r32
+ff.4: jmp r32
+ff.5: jmpf r32
+ff.6: push r32
+0f80: jo rel32
+0f81: jno rel32
+0f82: jb rel32
+0f83: jnb rel32
+0f84: je rel32
+0f85: jne rel32
+0f86: jbe rel32
+0f87: jnbe rel32
+0f88: js rel32
+0f89: jns rel32
+0f8a: jp rel32
+0f8b: jnp rel32
+0f8c: jl rel32
+0f8d: jge rel32
+0f8e: jle rel32
+0f8f: jg rel32

@@ -1,4 +1,0 @@
-.label
-    jmp .label // I like playing in /proc/.../mem and replacing this with nop while it's running
-out %text "Unreachable!"
-hlt

@@ -369,13 +369,13 @@ class Lexer:
                 if not result.data:
                     continue
                 if isinstance(result.data, str):
-                    return error.Traceback([error.Message(result.data, self.line_number, self.column_number)], [])
+                    return error.Traceback.new(result.data, self.line_number, self.column_number)
                 if result.data.type != TokenType.WHITESPACE:
                     tokens.append(Token(result.data.type, self.line_number, self.column_number, result.data.value))
                 self.advance(result.chars_consumed)
                 break
             else:
-                return error.Traceback([error.Message(f"Unexpected characters: '{self.remaining_source()[:5]}...'", self.line_number, self.column_number)], [])
+                return error.Traceback.new(f"Unexpected characters: '{self.remaining_source()[:5]}...'", self.line_number, self.column_number)
         
         return tokens
 

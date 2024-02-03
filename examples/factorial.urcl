@@ -1,0 +1,25 @@
+@DEFINE FACTOR R3
+@DEFINE RESULT R1
+
+PSH 5
+CAL .facorial                       // int result = factorial(5);
+PSH R1
+CAL .urcl_port_numb_out             // urcl_port_text_out(result)
+HLT                                 // exit();
+
+.facorial                           // int factorial(int value) {
+    PSH BP
+    MOV BP SP
+    SUB SP SP 0
+    LLOD FACTOR BP 8                //     int factor = value;
+    MOV RESULT FACTOR               //     int result = factor;
+    JMP ._end_loop                  //     while(factor <= 2) {
+    ._loop
+        DEC FACTOR FACTOR           //         factor--;
+        MLT RESULT RESULT FACTOR    //         result *= factor;
+    ._end_loop
+    BGE ._loop FACTOR 2             //     };
+    MOV SP BP
+    POP BP
+    RET                             //     return result;
+                                    // }

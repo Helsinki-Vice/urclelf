@@ -1,4 +1,5 @@
-MOV R2 0x8048159 // Address of this instruction (subject to change, labels don't play nice with LOD yet)
+.label
+MOV R2 .label    // Get address of this instruction
 LOD R2 R2        // Derefrence it
 HLT              // Return it
                  // Exit code should be 0xbb or 187 decimal - the opcode of MOV in x86

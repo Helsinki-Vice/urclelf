@@ -1,0 +1,4 @@
+.label
+    JMP .label
+OUT %text "Unreachable!"
+HLT

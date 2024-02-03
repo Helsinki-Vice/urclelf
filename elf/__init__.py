@@ -1,0 +1,1 @@
+from elf.structs import Elf32
