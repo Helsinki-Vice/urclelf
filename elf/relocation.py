@@ -64,7 +64,7 @@ def make_simple_elf_header() -> elf.ElfHeader:
         section_header_name_index = 0,
     )
 
-def make_relocatable_elf(relocatable_code: x86.CodegenOutput) -> elf.Elf32:
+def make_relocatable_elf(relocatable_code: x86.AssembledMachineCode) -> elf.Elf32:
     
     file_offset = 0
 
@@ -104,9 +104,9 @@ def make_relocatable_elf(relocatable_code: x86.CodegenOutput) -> elf.Elf32:
     text_section_header.flags = elf.SHF_ALLOC | elf.SHF_EXECINSTR
 
     undefined_symbol_names = relocatable_code.get_undefined_label_names()
-    all_symbol_names = list(relocatable_code.labels.keys()) + undefined_symbol_names
+    all_symbol_names = list(relocatable_code.symbols.keys()) + undefined_symbol_names
     symbol_name_table_bytes = elf.make_null_terminated_string_table(all_symbol_names)
-    symbol_table = make_symbol_table(relocatable_code.labels, undefined_symbol_names, symbol_name_table_bytes, 5)
+    symbol_table = make_symbol_table(relocatable_code.symbols, undefined_symbol_names, symbol_name_table_bytes, 5)
     symbol_table_section_header.info = symbol_table.get_symbol_index_of_first_nonlocal_symbol()
     symbol_table_section_header.link_index = section_header_table.entries.index(symbol_table_names_section_header)
     symbol_table_section_header.entry_size = 16
@@ -123,3 +123,6 @@ def make_relocatable_elf(relocatable_code: x86.CodegenOutput) -> elf.Elf32:
         file_offset += len(section_data[section_index])
 
     return elf.Elf32(elf_header, elf.Elf32ProgramHeaderTable([]), section_header_table, sections)
+
+def compile_to_relocatable_file(relocatable_code: x86.AssembledMachineCode) -> bytes:
+    return bytes(make_relocatable_elf(relocatable_code))

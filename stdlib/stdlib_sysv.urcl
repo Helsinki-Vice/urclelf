@@ -4,11 +4,10 @@
 @DEFINE TEMP_REGISTER_3 R4 // edx
 
 /*
-    The following is a stdlib for urcl functions, mostly providing i/o.
-    It only works on x86-32 unix for now!
-    NOTE: These functions use System V calling conventions.
+    URCL standard library for unix-y systems.
+    These functions use System V i386 calling conventions.
     Arguments are passed in reverse order and integers are returned through eax (R1).
-    !! R1, R3, AND R4 WILL BE DESTROYED IF YOU DO NOT SAVE THEM !!
+    R1, R3, and R4 will be destroyed if you do not save them!
 */
 
 .urcl_halt
@@ -51,7 +50,6 @@
         OUT %TEXT DIGIT                 //     print(digit)
         DEC CHAR_COUNT CHAR_COUNT       //     char_count--
         BNZ .printn_loop_2 CHAR_COUNT   // }
-        OUT %TEXT '\n'                  // print('\n')
         MOV SP BP
         POP BP
         RET

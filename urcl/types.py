@@ -24,6 +24,8 @@ class Mnemonic(enum.Enum):
     XNOR = "xnor"
     XOR = "xor"
     NAND = "nand"
+    BRL = "brl"
+    BRG = "brg"
     BRE = "bre"
     BNE = "bne"
     BOD = "bod"
@@ -85,6 +87,10 @@ class DefinedImmediate(enum.Enum):
     SMAX = "SMAX"
     UHALF = "UHALF"
     LHALF = "LHALF"
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+    UP = "UP"
+    DOWN = "DOWN"
 
 @dataclass
 class PortType:
@@ -93,6 +99,15 @@ class PortType:
 
 class Port(enum.Enum):
     TEXT = PortType(1, "text")
+    NUMB = PortType(2, "numb")
+    X = PortType(8, "x")
+    Y = PortType(9, "y")
+    COLOR = PortType(10, "color")
+    BUFFER = PortType(11, "buffer")
+    RNG = PortType(40, "rng")
+    WAIT = PortType(44, "wait")
+    GAMEPAD = PortType(65, "gamepad")
+    GAMEPAD_INFO = PortType(66, "gamepad_info")
 
     @classmethod
     def from_value(cls, value: "int | str"):

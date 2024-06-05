@@ -45,7 +45,8 @@ THREE_OPERAND_CONDITION_JUMP_MNEMONICS = [
     Mnemonic.BRE,
     Mnemonic.BNE,
     Mnemonic.BRC,
-    Mnemonic.SBRG
+    Mnemonic.SBRG,
+    Mnemonic.BRL
 ]
 
 TWO_OPERAND_ARITHMETIC_MNEMONICS = [
@@ -74,7 +75,8 @@ THREE_OPERAND_ARITHMETIC_MNEMONICS = [
     Mnemonic.BSR,
     Mnemonic.BSL,
     Mnemonic.SDIV,
-    Mnemonic.BSS
+    Mnemonic.BSS,
+    Mnemonic.XOR
 ]
 """
 @dataclass

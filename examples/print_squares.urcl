@@ -6,6 +6,7 @@ MOV ITER 0                              // iter = 0
     MLT NUMBER ITER ITER                //     number = iter * iter
     PSH NUMBER
     CAL .urcl_port_numb_out             //     urcl_port_numb_out(number)
+    OUT %TEXT '\n'
     INC ITER ITER                       //     iter++
     BLE ._loop ITER 6                  // } while(iter <= 6);
 HLT                                     // exit()

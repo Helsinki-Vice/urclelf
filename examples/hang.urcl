@@ -1,4 +1,4 @@
 .label
     JMP .label
-OUT %text "Unreachable!"
+OUT %TEXT "Unreachable!"
 HLT

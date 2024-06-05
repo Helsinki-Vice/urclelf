@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 import enum
 from typing import Literal, Self
-from x86.machine import Register
+from x86.register import Register
 from error import Traceback
 
 class Mnemonic(enum.StrEnum):
@@ -72,6 +72,12 @@ class Mnemonic(enum.StrEnum):
     XCHG = "xchg"
     XOR = "xor"
 
+class PointerSize(enum.StrEnum):
+    BYTE = "BYTE PTR"
+    WORD = "WORD PTR"
+    DWORD = "DWORD PTR"
+    QWORD = "QWORD PTR"
+
 @dataclass(frozen=True)
 class Label:
     name: str
@@ -90,15 +96,12 @@ Immediate = int | Label
 
 @dataclass(frozen=True)
 class EffectiveAddress:
+    pointer_size: PointerSize = PointerSize.DWORD
     segment: Segment = Segment.DEFAULT
     base: Register | None = None
     index: Register | None = None
     scale: Literal[1, 2, 4, 8] = 1
     displacement: Immediate = 0
-    
-    def get_register_size(self):
-        if isinstance(self.base, Register):
-            return self.base.value.size
         
     def __str__(self) -> str:
 
@@ -110,7 +113,7 @@ class EffectiveAddress:
         if self.displacement or not terms:
             terms.append(str(self.displacement))
         
-        result = "["
+        result = f"{self.pointer_size.value} ["
         if self.segment != Segment.DEFAULT:
             result += f"{self.segment}:"
         result += "+".join(terms) + "]"
@@ -120,15 +123,6 @@ class EffectiveAddress:
 @dataclass(frozen=True)
 class Operand:
     value: Register | EffectiveAddress | Immediate
-
-    def get_register_size(self):
-
-        if isinstance(self.value, Register):
-            return self.value.value.size
-        elif isinstance(self.value, EffectiveAddress):
-            return self.value.get_register_size()
-        else:
-            return None
     
     def as_memory(self, scale: Literal[1, 2, 4], offset: Register | int) -> EffectiveAddress:
         if isinstance(self.value, Register):
@@ -184,7 +178,7 @@ class ASMCode:
             instruction.operands.append(Operand(operand))
         self.code.append(instruction)
     
-    def add_move(self, destination: Register, source: Register | EffectiveAddress | Immediate):
+    def add_move(self, destination: Register | EffectiveAddress | Immediate, source: Register | EffectiveAddress | Immediate):
         if destination != source:
             self.add_instruction(Mnemonic.MOV, [destination, source])
     
@@ -214,7 +208,7 @@ class ASMCode:
                 lines.append(str(instruction))
         return "\n".join(lines)
 
-def sum_into_effective_address(values: list[int | Label | Register]) -> EffectiveAddress | Traceback:
+def sum_into_effective_address(values: list[int | Label | Register], pointer_size: PointerSize, segment:Segment=Segment.DEFAULT) -> EffectiveAddress | Traceback:
 
     registers: list[Register] = []
     displacement = 0
@@ -247,4 +241,4 @@ def sum_into_effective_address(values: list[int | Label | Register]) -> Effectiv
     else:
         return Traceback.new("Effective address cannot contain more than two registers")
     
-    return EffectiveAddress(base=base, index=index, displacement=displacement)
+    return EffectiveAddress(pointer_size=pointer_size, segment=segment, base=base, index=index, displacement=displacement)

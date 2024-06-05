@@ -5,6 +5,7 @@ PSH 5
 CAL .facorial                       // int result = factorial(5);
 PSH R1
 CAL .urcl_port_numb_out             // urcl_port_text_out(result)
+OUT %TEXT '\n'
 HLT                                 // exit();
 
 .facorial                           // int factorial(int value) {

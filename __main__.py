@@ -29,16 +29,14 @@ def command_line_compile(source_path: str, options: CommandLineArguments):
         program = compile_urcl_to_executable(
             file.read(),
             target.CompileOptions(
-                target=target.Target(target.Isa.X86, target.ByteOrder.LITTLE, target.OsAbi.UNIX),
+                target=target.Target(target.Isa.X86, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
                 executable_type=target.ExecutableType.OBJECT,
                 executable_format=options.executable_format,
                 is_main=options.is_main
             )
         )
-        if isinstance(program, Elf32):
-            bytes_for_file = bytes(program)
-        elif isinstance(program, x86.CodegenOutput):
-            bytes_for_file = program.binary
+        if isinstance(program, bytes):
+            bytes_for_file = program
         else:
             print(program)
             exit()
@@ -62,8 +60,8 @@ def main():
         executable_format = target.ExecutableFormat.FLAT
     elif k.executable_format.lower() in ["elf", None]:
         executable_format = target.ExecutableFormat.ELF
-    elif k.executable_format.lower() == "exe":
-        executable_format = target.ExecutableFormat.MS_PE
+    elif k.executable_format.lower() == "win32":
+        executable_format = target.ExecutableFormat.COFF
     else:
         print(f"Executable file format '{k.exec_file_type.lower()}' not known.")
         exit()

@@ -18,6 +18,19 @@ URCL_X86_REGISTER_MAPPING: dict[urcl.GeneralRegister | urcl.BasePointer | urcl.S
 PARSING_ERROR_MESSAGE = "Could not parse urcl source"
 NO_ERROR_EXIT_CODE = 0
 
+def convert_urcl_register_to_x86(register: urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer) -> x86.Operand | Traceback:
+
+    x86_register = URCL_X86_REGISTER_MAPPING.get(register)
+    if x86_register:
+        return x86.Operand(x86_register)
+    else:
+        effective_address = x86.sum_into_effective_address([], x86.PointerSize.DWORD)
+        if isinstance(effective_address, Traceback):
+            error = effective_address
+            error.elaborate(f"URCL register {register} could not be mapped to a memory address")
+            return error
+        return x86.Operand(effective_address)
+    
 def get_destination_register(instruction: urcl.InstructionCSTNode) -> urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer | Traceback:
 
     if not instruction.operands:
@@ -28,18 +41,20 @@ def get_destination_register(instruction: urcl.InstructionCSTNode) -> urcl.Gener
     
     return urcl_destination_register
 
-def get_x86_destination_register(instruction: urcl.InstructionCSTNode) -> x86.Register | Traceback:
+def get_x86_destination_register(instruction: urcl.InstructionCSTNode) -> x86.Register | x86.EffectiveAddress | x86.Immediate |Traceback:
 
     urcl_destination_register = get_destination_register(instruction)
     if isinstance(urcl_destination_register, Traceback):
         error = urcl_destination_register
         error.elaborate(f"{instruction.mnemonic.name.upper()} instruction does not have valid register as a destination", line_number=instruction.line_number, column_number=instruction.column_number)
         return error
-    x86_destination_register = URCL_X86_REGISTER_MAPPING.get(urcl_destination_register)
-    if not x86_destination_register:
-        return Traceback.new(f"URCL register {urcl_destination_register} has no x86 equivalent")
+    x86_destination_register = convert_urcl_register_to_x86(urcl_destination_register)
+    if isinstance(x86_destination_register, Traceback):
+        error = x86_destination_register
+        error.elaborate(f"URCL register {urcl_destination_register} has no x86 equivalent")
+        return error
     
-    return x86_destination_register
+    return x86_destination_register.value
 
 def get_jump_target(instruction: urcl.InstructionCSTNode) -> urcl.Label | Traceback:
 
@@ -56,10 +71,12 @@ def urcl_operand_to_x86(operand: urcl.urclcst.OperandCSTNode) -> x86.Operand | T
     if isinstance(operand.value, urcl.urclcst.Label):
         return x86.Operand(x86.Label(operand.value.name))
     elif isinstance(operand.value, (urcl.GeneralRegister, urcl.BasePointer, urcl.StackPointer)):
-        register = URCL_X86_REGISTER_MAPPING.get(operand.value)
-        if register is None:
-            return Traceback.new(f"URCL register {operand.value} has no x86 equivalent")
-        return x86.Operand(register)
+        register = convert_urcl_register_to_x86(operand.value)
+        if isinstance(register, Traceback):
+            error = register
+            error.elaborate(f"URCL register {operand.value} has no x86 equivalent")
+            return error
+        return register
     elif isinstance(operand.value, int):
         return x86.Operand(operand.value)
     elif isinstance(operand.value, urcl.urclcst.RelativeAddress):
@@ -68,6 +85,8 @@ def urcl_operand_to_x86(operand: urcl.urclcst.OperandCSTNode) -> x86.Operand | T
         return x86.Operand(ord(operand.value.char))
     elif isinstance(operand.value, urcl.Port):
         return x86.Operand(operand.value.value.id)
+    elif isinstance(operand.value, urcl.DefinedImmediate):
+        return x86.Operand(0)
     else:
         return Traceback.new(f"URCL operand {operand} has no x86 equivalent")
 
@@ -170,6 +189,8 @@ def compile_three_operand_jump_instruction(instruction: urcl.InstructionCSTNode,
             x86_code.add_instruction(x86.Mnemonic.JE, [x86.Label(destination_operand.name)])
         elif instruction.mnemonic == urcl.Mnemonic.BNE:
             x86_code.add_instruction(x86.Mnemonic.JNE, [x86.Label(destination_operand.name)])
+        elif instruction.mnemonic == urcl.Mnemonic.BRL:
+            x86_code.add_instruction(x86.Mnemonic.JL, [x86.Label(destination_operand.name)])
         else:
             emit_no_translation_error(instruction)
     
@@ -238,7 +259,61 @@ def compile_out_instruction(instruction: urcl.InstructionCSTNode, entry_point: i
         if isinstance(output_string, urcl.GeneralRegister):
             string_length_bytes = 4
             uint32_count = 1
-            x86_code.add_instruction(x86.Mnemonic.PUSH, [URCL_X86_REGISTER_MAPPING[output_string]])
+            destination = convert_urcl_register_to_x86(output_string)
+            if isinstance(destination, Traceback):
+                error = destination
+                error.elaborate(f"Destination register {output_string} for OUT instruction is invalid")
+                return error
+            x86_code.add_instruction(x86.Mnemonic.PUSH, [destination.value])
+        else:
+            uint32_count = math.ceil(len(output_string) / 4)
+            string_length_bytes = len(output_string)
+            for u32 in bytes_to_stack_ints(output_string):
+                x86_code.add_instruction(x86.Mnemonic.PUSH, [u32])
+        linux.add_syscall_fwrite(x86_code, x86.Register.ESP, string_length_bytes, linux.File.STDOUT)
+        x86_code.add_instruction(x86.Mnemonic.ADD, [x86.Register.ESP, uint32_count * 4])
+        x86_code.add_instructions_to_restore_general_registers()
+
+    return x86_code
+
+def compile_in_instruction(instruction: urcl.InstructionCSTNode, entry_point: int):
+    
+    x86_code = x86.ASMCode(entry_point, [])
+    if instruction.mnemonic == urcl.Mnemonic.OUT:
+        if isinstance(instruction.operands[0].value, urcl.Port):
+            port = instruction.operands[0].value
+        elif isinstance(instruction.operands[0].value, int):
+            port = urcl.Port.from_value(instruction.operands[0].value)
+        else:
+            port = None
+        if port is None:
+            return Traceback.new(f"OUT instruction operand 1 '{instruction.operands[0]}' is not a valid port", instruction.line_number, instruction.column_number)
+        
+        # URCL standard requires ascii encoding but we use utf-8 instead
+        # don't tell ModPunchTree
+        if isinstance(instruction.operands[1].value, int):
+            output_string = chr(instruction.operands[1].value).encode("utf-8")
+        elif isinstance(instruction.operands[1].value, str):
+            # NOTE: outputting strings to %TEXT is non-standard
+            output_string = instruction.operands[1].value.encode("utf-8")
+        elif isinstance(instruction.operands[1].value, urcl.Character):
+            output_string = instruction.operands[1].value.char.encode("utf-8")
+        elif isinstance(instruction.operands[1].value, urcl.GeneralRegister):
+            output_string = instruction.operands[1].value
+        else:
+            return Traceback.new(f"OUT instruction operand 2 '{instruction.operands[1]}' cannot be output onto a port.", instruction.line_number, instruction.column_number)
+        
+        x86_code.add_instructions_to_save_general_registers()
+
+        if isinstance(output_string, urcl.GeneralRegister):
+            string_length_bytes = 4
+            uint32_count = 1
+            destination = convert_urcl_register_to_x86(output_string)
+            if isinstance(destination, Traceback):
+                error = destination
+                error.elaborate(f"Destination register {output_string} for OUT instruction is invalid")
+                return error
+            x86_code.add_instruction(x86.Mnemonic.PUSH, [destination.value])
         else:
             uint32_count = math.ceil(len(output_string) / 4)
             string_length_bytes = len(output_string)
@@ -340,15 +415,19 @@ def compile_list_load_instruction(instruction: urcl.InstructionCSTNode, entry_po
     
     x86_code = x86.ASMCode(entry_point, [])
     if instruction.mnemonic in [urcl.Mnemonic.LOD, urcl.Mnemonic.LLOD]:
-        x86_register = get_x86_destination_register(instruction)
-        if isinstance(x86_register, Traceback):
-            return x86_register
+        x86_destination = get_x86_destination_register(instruction)
+        if isinstance(x86_destination, Traceback):
+            error = x86_destination
+            error.elaborate("LLOD instruction has invalid destination")
+            return error
         source = urcl_operand_to_x86(instruction.operands[1])
         if isinstance(source, Traceback):
             error = source
             error.elaborate(f"LLOD base address '{instruction.operands[1]}' is not valid")
             return error
-        assert not isinstance(source.value, x86.EffectiveAddress)
+        source.value
+        #if isinstance(source.value, x86.EffectiveAddress):
+        #    return Traceback.new(f"Source operand for load instruction must be a register, not {instruction.operands[1]}")
         if len(instruction.operands) == 3:
             index = instruction.operands[2].value
             if not isinstance(index, int):
@@ -357,13 +436,41 @@ def compile_list_load_instruction(instruction: urcl.InstructionCSTNode, entry_po
             index = 0
         if isinstance(source, Traceback):
             return source
-        memory = x86.sum_into_effective_address([source.value, index])
+        memory = x86.sum_into_effective_address([source.value, index], x86.PointerSize.DWORD)
         if isinstance(memory, Traceback):
             error = memory
             error.elaborate("LLOD target address cannot be translated to x86")
             return error
             
-        x86_code.add_instruction(x86.Mnemonic.MOV, [x86_register, memory])
+        x86_code.add_instruction(x86.Mnemonic.MOV, [x86_destination, memory])
+    
+    return x86_code
+
+def compile_list_store_instruction(instruction: urcl.InstructionCSTNode, entry_point: int):
+    
+    x86_code = x86.ASMCode(entry_point, [])
+    if instruction.mnemonic in [urcl.Mnemonic.LSTR]:
+        dest = urcl_operand_to_x86(instruction.operands[0])
+        source = urcl_operand_to_x86(instruction.operands[1])
+        index = urcl_operand_to_x86(instruction.operands[2])
+        if isinstance(source, Traceback):
+            error = source
+            error.elaborate(f"LSTR instruction got invalid source operand {instruction.operands[1]}")
+            return error
+        if isinstance(dest, Traceback):
+            error = dest
+            error.elaborate(f"LSTR instruction got invalid destination operand {instruction.operands[0]}")
+            return error
+        if isinstance(index, Traceback):
+            error = index
+            error.elaborate(f"LSTR index operand must be an int or register, not {instruction.operands[2]}")
+            return index
+        if not isinstance(index.value, (int, x86.Register)):
+            return Traceback.new(f"LSTR index operand must be an int or register, not {instruction.operands[2]}")
+        source = source.as_memory(scale=4, offset=index.value)
+        dest = dest.value
+            
+        x86_code.add_instruction(x86.Mnemonic.MOV, [dest, source])
     
     return x86_code
 
@@ -377,7 +484,7 @@ def compile_load_instruction(instruction: urcl.InstructionCSTNode, entry_point: 
         source = urcl_operand_to_x86(instruction.operands[1])
         if isinstance(source, Traceback):
             return source
-        memory = source.as_memory(scale=4)
+        memory = source.as_memory(scale=4, offset=0)
             
         x86_code.add_instruction(x86.Mnemonic.MOV, [x86_register, memory])
     
@@ -390,10 +497,14 @@ def compile_store_instruction(instruction: urcl.InstructionCSTNode, entry_point:
         dest = urcl_operand_to_x86(instruction.operands[0])
         source = urcl_operand_to_x86(instruction.operands[1])
         if isinstance(source, Traceback):
-            return source
+            error = source
+            error.elaborate(f"STR instruction got invalid source operand {instruction.operands[1]}")
+            return error
         if isinstance(dest, Traceback):
-            return dest
-        source = source.as_memory(scale=4)
+            error = dest
+            error.elaborate(f"STR instruction got invalid destination operand {instruction.operands[0]}")
+            return error
+        source = source.as_memory(scale=4, offset=0)
         dest = dest.value
             
         x86_code.add_instruction(x86.Mnemonic.MOV, [dest, source])
@@ -443,11 +554,13 @@ TRANSLATIONS: list[InstructionFamily] = [
     InstructionFamily(urcl.THREE_OPERAND_CONDITION_JUMP_MNEMONICS, compile_three_operand_jump_instruction, 3),
     InstructionFamily([urcl.Mnemonic.DIV, urcl.Mnemonic.MOD], compile_division_instruction, 3),
     InstructionFamily([urcl.Mnemonic.OUT], compile_out_instruction, 2),
+    InstructionFamily([urcl.Mnemonic.IN], compile_in_instruction, 2),
     InstructionFamily(urcl.TWO_OPERAND_ARITHMETIC_MNEMONICS, compile_two_operand_arithmetic_instruction, 2),
     InstructionFamily(urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS, compile_three_operand_arithmetic_instruction, 3),
     InstructionFamily([urcl.Mnemonic.PSH], compile_push_instruction, 1),
     InstructionFamily([urcl.Mnemonic.POP], compile_pop_instruction, 1),
     InstructionFamily([urcl.Mnemonic.LLOD], compile_list_load_instruction, 3),
+    InstructionFamily([urcl.Mnemonic.LSTR], compile_list_store_instruction, 3),
     InstructionFamily([urcl.Mnemonic.LOD], compile_load_instruction, 2),
     InstructionFamily([urcl.Mnemonic.STR], compile_store_instruction, 2)
 ]

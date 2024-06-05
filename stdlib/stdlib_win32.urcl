@@ -1,0 +1,14 @@
+
+/*
+    URCL standard library for 32-bit Windows NT.
+    // TODO: make this file actually work
+*/
+
+.urcl_halt
+    HLT
+
+.urcl_port_text_out
+    RET
+
+.urcl_port_numb_out
+    RET

@@ -8,16 +8,8 @@ import elf
 from error import Traceback
 import compile_x86
 import target
-import elf.relocation as relocation
+import elf
 
-URCL_X86_REGISTER_MAPPING: dict[urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer, x86.Register] = {
-    urcl.GeneralRegister(1): x86.Register.EAX,
-    urcl.GeneralRegister(2): x86.Register.EBX,
-    urcl.GeneralRegister(3): x86.Register.ECX,
-    urcl.GeneralRegister(4): x86.Register.EDX,
-    urcl.BasePointer(): x86.Register.EBP,
-    urcl.StackPointer(): x86.Register.ESP
-}
 
 PARSING_ERROR_MESSAGE = "Could not parse urcl source"
 NO_ERROR_EXIT_CODE = 0
@@ -71,7 +63,7 @@ def compile_urcl_to_x86_asm(urcl_program: urcl.CST, is_main: bool) -> x86.ASMCod
     
     return x86_assembly_code
 
-def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptions) -> x86.CodegenOutput | Traceback:
+def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptions) -> x86.AssembledMachineCode | Traceback:
 
     urcl_program = urcl.parse(source)
     if isinstance(urcl_program, Traceback):
@@ -96,21 +88,22 @@ def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptio
     else:
         return Traceback.new("Only x86 is currently supported")
 
-def compile_urcl_to_executable(source: str, options: target.CompileOptions):
+def compile_urcl_to_executable(source: str, options: target.CompileOptions) -> bytes | Traceback:
     
     if options.executable_format == target.ExecutableFormat.FLAT:
-        return compile_urcl_source_to_flat_binary(source, options)
-    
-    elif options.executable_format == target.ExecutableFormat.ELF:
-        code = compile_urcl_source_to_flat_binary(source, options)
-        if isinstance(code, Traceback):
-            error = code
+        output_binary = compile_urcl_source_to_flat_binary(source, options)
+    elif options.executable_format not in [target.ExecutableFormat.ELF, target.ExecutableFormat.COFF]:
+        return Traceback.new(f"Executable format {options.executable_format} is not supported")
+    else:
+        assembled_code = compile_urcl_source_to_flat_binary(source, options)
+        if isinstance(assembled_code, Traceback):
+            error = assembled_code
             error.elaborate("Machine code could not be generated")
             return error
-        #return elf.SimpleElf32Executable(code.binary, options).assemble(True)
-        return relocation.make_relocatable_elf(code)
     
+    if options.executable_format == target.ExecutableFormat.ELF:
+        output_binary =  elf.make_relocatable_elf(assembled_code)
     else:
-        return Traceback.new(f"Executable format {options.executable_format} is not supported")
-
-    #return bytes(elf.SimpleElf32Executable(second_pass_binary, options).assemble(not options.no_sections))
+        output_binary = b"" #coff.compile_to_relocatable_file(assembled_code)
+    
+    return bytes(output_binary)

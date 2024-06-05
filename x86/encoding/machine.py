@@ -2,6 +2,7 @@
 import enum
 from dataclasses import dataclass
 from typing import Literal
+from x86.register import Register
 
 # Links
 # http://www.c-jump.com/CIS77/CPU/x86/lecture.html
@@ -9,6 +10,18 @@ from typing import Literal
 # http://ref.x86asm.net/coder32.html
 
 ThreeBits = Literal[0, 1, 2, 3, 4, 5, 6, 7]
+
+REGISTER_CODES: dict[ThreeBits, list[Register]] = {
+    0: [Register.AL, Register.AX, Register.EAX],
+    1: [Register.CL, Register.CX, Register.ECX],
+    2: [Register.DL, Register.DX, Register.EDX],
+    3: [Register.BL, Register.BX, Register.EBX],
+    4: [Register.AH, Register.SP, Register.ESP],
+    5: [Register.CH, Register.BP, Register.EBP],
+    6: [Register.DH, Register.SI, Register.ESI],
+    7: [Register.BH, Register.DI, Register.EDI],
+}
+
 class AddressingMode(enum.IntEnum):
     INDIRECT = 0
     INDIRECT_WITH_BYTE_DISPLACEMENT = 1
@@ -95,7 +108,7 @@ class ScaleIndexByte:
         return f"[{self.scale} {self.index} {self.base}]"
 
 @dataclass
-class X86Instruction:
+class X86MachineInstruction:
     prefixes: InstructionPrefixes
     opcode: Opcode
     mod_reg_rm: ModRegRM | None
@@ -130,55 +143,17 @@ class X86Instruction:
 
         return machine_code
 
-@dataclass
-class RegisterType:
-    name: str
-    code: ThreeBits
-    size: Literal[8, 16, 32]
-        
-    def __str__(self) -> str:
-        return self.name
+def get_register_code(register: Register):
+    for code in REGISTER_CODES:
+        if register in REGISTER_CODES[code]:
+            return code
+    else:
+        return 0 # Never hapens
 
-class Register(enum.Enum):
-    AL = RegisterType("al", 0, 8)
-    AX = RegisterType("ax", 0, 16)
-    EAX = RegisterType("eax", 0, 32)
-    BL = RegisterType("bl", 3, 8)
-    BX = RegisterType("bx", 3, 16)
-    EBX = RegisterType("ebx", 3, 32)
-    CL = RegisterType("cl", 1, 8)
-    CX = RegisterType("cx", 1, 16)
-    ECX = RegisterType("ecx", 1, 32)
-    DL = RegisterType("dl", 2, 8)
-    DX = RegisterType("dx", 2, 16)
-    EDX = RegisterType("edx", 2, 32)
-    AH = RegisterType("ah", 4, 8)
-    SP = RegisterType("sp", 4, 16)
-    ESP = RegisterType("esp", 4, 32)
-    CH = RegisterType("ch", 5, 8)
-    BP = RegisterType("bp", 5, 16)
-    EBP = RegisterType("ebp", 5, 32)
-    DH = RegisterType("dh", 6, 8)
-    SI = RegisterType("si", 6, 16)
-    ESI = RegisterType("esi", 6, 32)
-    BH = RegisterType("bh", 7, 8)
-    DI = RegisterType("di", 7, 16)
-    EDI = RegisterType("edi", 7, 32)
+def register_from_code(code: ThreeBits, size: Literal[8, 16, 32]):
 
-    @staticmethod
-    def from_code(code: int, size: int):
-        for register in Register:
-            if register.value.code == code and register.value.size == size:
-                return register
-    
-    @staticmethod
-    def from_name(name: str):
-        for register in Register:
-            if register.value.name == name.lower():
-                return register
-    
-    def get_code(self):
-        return self.value.code
-    
-    def __str__(self):
-        return str(self.value)
+    for register in REGISTER_CODES[code]:
+        if register.value.size == size:
+            return register
+    else:
+        raise ValueError("Unreachable code (Uh Oh!)")

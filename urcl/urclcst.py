@@ -1,7 +1,7 @@
 "This module takes a stream of URCL tokens and parses it into a concrete syntax tree"
 import enum
 from dataclasses import dataclass
-from typing import Union, Self, Generic, TypeVar
+from typing import Union, Generic, TypeVar, Self
 
 from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate, BasePointer, StackPointer
 import urcl.lex

@@ -1,6 +1,7 @@
 import math
 from typing import Literal
-from x86.machine import Register, ModRegRM, AddressingMode, ScaleIndexByte, ThreeBits
+from x86.encoding.machine import ModRegRM, AddressingMode, ScaleIndexByte, ThreeBits, get_register_code
+from x86.register import Register
 from x86.asm import EffectiveAddress
 
 
@@ -18,7 +19,7 @@ def calculate_sib_index(effective_address: EffectiveAddress):
         return 4 # Special case for [esp] addressing
     if effective_address.index is None:
         return None
-    index = effective_address.index.value.code
+    index = get_register_code(effective_address.index)
     if index == 4: # Technically it's register eiz but that's too bad
         return None
     
@@ -30,7 +31,7 @@ def calculate_sib_base(effective_address: EffectiveAddress, mod: AddressingMode)
     if effective_address.base is None:
         return 5 # Tells the cpu to look for 32 bit displacement
     
-    return effective_address.base.value.code
+    return get_register_code(effective_address.base)
 
 
 def calculate_sib(effective_address: EffectiveAddress | Register | None, mod_reg_rm: ModRegRM | None) -> ScaleIndexByte | None:

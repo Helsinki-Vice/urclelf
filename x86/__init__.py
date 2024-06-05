@@ -1,3 +1,7 @@
-from x86.machine import Register, Opcode, X86Instruction
-from x86.asm import Label, Operand, Mnemonic, ASMCode, ASMInstruction, EffectiveAddress, Immediate, sum_into_effective_address
-from x86.codegen import CodeGenIteration, encode, InstructionEncoding, encode_instruction_using_encoding, assemble, CodegenOutput, Relocation
+"This module is an x86 library. It contains Lovecraftian horrors beyond comprehension."
+from x86.register import Register
+from x86.asm import Operand, Label, ASMCode, Mnemonic, EffectiveAddress, sum_into_effective_address, PointerSize, Immediate
+from x86.encoding.encode import assemble
+from x86.encoding.output import AssembledMachineCode, Relocation
+
+__all__ = ["Register", "Operand", "Label", "ASMCode", "Mnemonic", "EffectiveAddress", "sum_into_effective_address", "PointerSize", "Immediate", "assemble", "AssembledMachineCode", "Relocation"]

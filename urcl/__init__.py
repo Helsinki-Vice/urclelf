@@ -10,7 +10,7 @@ import urcl.urclast as urclast
 
 from urcl.types import Mnemonic, GeneralRegister, BasePointer, StackPointer, Port, Label, Character
 from urcl.lex import tokenize, TokenStream
-from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode, OperandType
+from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode, OperandType, DefinedImmediate
 from urcl.urclast import TWO_OPERAND_ARITHMETIC_MNEMONICS, TWO_OPERAND_CONDITION_JUMP_MNEMONICS, THREE_OPERAND_CONDITION_JUMP_MNEMONICS, ZERO_OPERAND_MNEMONICS, THREE_OPERAND_ARITHMETIC_MNEMONICS
 
 def parse(source: str):
