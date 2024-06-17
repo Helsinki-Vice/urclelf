@@ -22,7 +22,7 @@ class ElfVersion(enum.Enum):
 
 class OSABI(enum.Enum):
     "Operating system ABI of the target machine"
-    GENERIC_UNIX = bytes([0])
+    SYSTEM_V = bytes([0])
     LINUX = bytes([3])
 
 class FileType(enum.Enum):
@@ -36,6 +36,7 @@ class TargetISA(enum.Enum):
     "Instruction set of the target machine"
     UNKNOWN = bytes([0, 0])
     X86 = bytes([3, 0])
+    X64 = bytes([0x3e, 0])
 
 class ABIVersion(enum.Enum):
     "Operating system ABI of the target machine"
@@ -55,9 +56,11 @@ class Elf32ProgramHeaderType(enum.Enum):
     LOADABLE = bytes([1, 0, 0, 0])
 
 E_IDENT_SIZE = 16
-ELF_HEADER_SIZE = 52
+ELF32_HEADER_SIZE = 52
+ELF64_HEADER_SIZE = 64
 ELF32_PROGRAM_HEADER_SIZE = 32
 ELF32_SECTION_HEADER_SIZE = 40
+ELF64_SECTION_HEADER_SIZE = 64
 
 ELFCLASS32 = 1
 ELFDATA2LSB = 1
@@ -75,6 +78,9 @@ SHT_STRTAB = 3
 SHF_ALLOC = 2
 SHF_EXECINSTR = 4
 ELF32_SYMBOL_TABLE_ENTRY_SIZE = 16
+ELF64_SYMBOL_TABLE_ENTRY_SIZE = 24
+ELF32_RELOCATION_TABLE_ENTRY_SIZE = 12
+ELF64_RELOCATION_TABLE_ENTRY_SIZE = 24
 
 class KnownSectionNames(enum.StrEnum):
     NULL = ".null"
@@ -121,12 +127,16 @@ class ElfHeader:
     
     def __bytes__(self):
         
+        if self.elf_identifier.elf_class == ElfClass.BITS_64:
+            format = "LLLIHHHHHH"
+        else:
+            format = "IIIIHHHHHH"
         result = bytes()
         result += bytes(self.elf_identifier)
         result += self.file_type.value
         result += self.target_isa.value
         result += self.elf_version.value
-        result += struct.pack("IIIIHHHHHH",
+        result += struct.pack(format,
             self.entry_point,
             self.program_header_offset,
             self.section_header_offset,
@@ -142,7 +152,7 @@ class ElfHeader:
 @dataclass
 class Elf32ProgramHeader:
     "Defines a segment loaded into memory"
-
+    # TODO: Support 64 bit
     header_type: Elf32ProgramHeaderType  # p_type
     file_offset: int                     # p_offset
     virtual_address: int                 # p_vaddr
@@ -202,9 +212,26 @@ class Elf32SectionHeader:
             align = 0,
             entry_size = 0
         )
+
+def section_header_to_bytes(header: Elf32SectionHeader, elf_class: ElfClass) -> bytes:
     
-    def __bytes__(self):
-        return struct.pack("I", self.name_index) + self.header_type.value + struct.pack("IIIIIIII", self.flags, self.virtual_address, self.file_offset, self.file_size, self.link_index, self.info, self.align, self.entry_size)
+    if elf_class == ElfClass.BITS_64:
+        format = "LLLLIILL"
+    else:
+        format = "IIIIIIII"
+    
+    return struct.pack("I", header.name_index) \
+    + header.header_type.value \
+    + struct.pack(format,
+        header.flags,
+        header.virtual_address,
+        header.file_offset,
+        header.file_size,
+        header.link_index,
+        header.info,
+        header.align,
+        header.entry_size
+    )
 
 @dataclass
 class Elf32SectionHeaderTable:
@@ -255,7 +282,7 @@ class Elf32:
             program_header_table_bin.extend(bytes(program_header))
         
         for section_header in self.section_header_table.entries:
-            section_header_table_bin.extend(bytes(section_header))
+            section_header_table_bin.extend(section_header_to_bytes(section_header, self.elf_header.elf_identifier.elf_class))
         
         file_elements: list[tuple[int, bytearray]] = [(0, elf_header_bin)]
 
@@ -303,9 +330,13 @@ class Elf32SymbolTableEntry:
     other: int              # st_other;
     section_index: int      # st_shndx;
     
-    def __bytes__(self):
-        return struct.pack("IIIBBH", self.name_index, self.value, self.size, (self.type) + (self.binding << 4), self.other, self.section_index)
-
+def symbol_table_entry_to_bytes(entry: Elf32SymbolTableEntry, elf_class: ElfClass):
+    if elf_class == ElfClass.BITS_64:
+        return struct.pack("IBBHLL", entry.name_index, (entry.type) + (entry.binding << 4), entry.other, entry.section_index, entry.value, entry.size)
+    else:
+        return struct.pack("IIIBBH", entry.name_index, entry.value, entry.size, (entry.type) + (entry.binding << 4), entry.other, entry.section_index)
+    
+    
 @dataclass
 class SymbolTable:
     entries: list[Elf32SymbolTableEntry]
@@ -319,8 +350,8 @@ class SymbolTable:
     
         return largest_symbol_index_with_local_symbol + 1
     
-    def __bytes__(self):
-        return b"".join([bytes(symbol) for symbol in self.entries])
+def symbol_table_to_bytes(symbols: SymbolTable, elf_class: ElfClass):
+    return b"".join([symbol_table_entry_to_bytes(symbol, elf_class) for symbol in symbols.entries])
 
 #FIXME: I don't understand these, do not trust this enum
 class X86RelocationType(enum.IntEnum):
@@ -343,9 +374,15 @@ class RelocationTableEntryWithAddend:
     symbol_index: int        # r_info (upper 24 bits)
     addend: int              # r_addend
 
-    def __bytes__(self):
-        return struct.pack("IIi", self.offset, (self.symbol_index << 8) + self.type, self.addend)
-
+def relocation_table_entry_to_bytes(entry: RelocationTableEntryWithAddend, elf_class: ElfClass):
+    if elf_class == ElfClass.BITS_64:
+        format = "LLl"
+        symbol_index_bit_offset = 32
+    else:
+        format = "IIi"
+        symbol_index_bit_offset = 8
+    
+    return struct.pack(format, entry.offset, (entry.symbol_index << symbol_index_bit_offset) + entry.type, entry.addend)
 
 def make_null_terminated_string_table(strings: list[str]) -> bytes:
     return b"\0" + bytes([]).join([string.encode("ascii") + b"\0" for string in strings])
@@ -354,5 +391,5 @@ def make_null_terminated_string_table(strings: list[str]) -> bytes:
 class RelocationTable:
     entries: list[RelocationTableEntryWithAddend]
 
-    def __bytes__(self):
-        return b"".join([bytes(relocation) for relocation in self.entries])
+def relocation_table_to_bytes(table: RelocationTable, elf_class: ElfClass):
+    return b"".join([relocation_table_entry_to_bytes(relocation, elf_class) for relocation in table.entries])

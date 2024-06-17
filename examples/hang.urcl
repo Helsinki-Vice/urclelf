@@ -1,4 +1,3 @@
+// Runs forever.
 .label
     JMP .label
-OUT %TEXT "Unreachable!"
-HLT

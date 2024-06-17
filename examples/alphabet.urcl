@@ -1,0 +1,26 @@
+
+// Prints the alphabet in upper and lower case.
+// Taken with slight modifications from psycoder-x.
+
+@DEFINE CURR R3
+@DEFINE LAST R2
+@DEFINE FLAG R1
+
+IMM FLAG 1
+IMM CURR 'A'
+IMM LAST 'Z'
+SUB CURR CURR 1
+.loop
+    ADD CURR CURR 1
+    OUT %TEXT CURR
+    BRL .loop CURR LAST
+    BRL .exit FLAG 1
+    IMM FLAG 0
+    IMM CURR 'a'
+    IMM LAST 'z'
+    SUB CURR CURR 1
+    JMP .loop
+.exit
+    IMM CURR 0xA
+    OUT %TEXT CURR
+    HLT

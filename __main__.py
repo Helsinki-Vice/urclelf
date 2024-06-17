@@ -21,6 +21,7 @@ class CommandLineArguments:
     source_file: str
     output_file: str
     executable_format: target.ExecutableFormat
+    machine_type: target.Isa
     is_main: bool
 
 def command_line_compile(source_path: str, options: CommandLineArguments):
@@ -29,7 +30,7 @@ def command_line_compile(source_path: str, options: CommandLineArguments):
         program = compile_urcl_to_executable(
             file.read(),
             target.CompileOptions(
-                target=target.Target(target.Isa.X86, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
+                target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
                 executable_type=target.ExecutableType.OBJECT,
                 executable_format=options.executable_format,
                 is_main=options.is_main
@@ -48,8 +49,9 @@ def main():
     argument_parser = argparse.ArgumentParser(description="Compiles URCL code to x86 executables.")
     argument_parser.add_argument("source_file")
     argument_parser.add_argument("-o", dest="output_file")
-    argument_parser.add_argument("-f", dest="executable_format", default="elf")
+    argument_parser.add_argument("-f", dest="executable_format", default="elf", help="output file format")
     argument_parser.add_argument("-lib", dest="lib", action="store_true", help="pass this if this file is not the entry point.")
+    argument_parser.add_argument("-m", dest="machine", default="i386", help="instruction set of the target machine")
     k = argument_parser.parse_args(sys.argv[1:])
     if k.output_file is None:
         filename = k.source_file.split("/")[-1].split(".")[0] + ".o"
@@ -60,16 +62,24 @@ def main():
         executable_format = target.ExecutableFormat.FLAT
     elif k.executable_format.lower() in ["elf", None]:
         executable_format = target.ExecutableFormat.ELF
-    elif k.executable_format.lower() == "win32":
+    elif k.executable_format.lower() == "coff":
         executable_format = target.ExecutableFormat.COFF
     else:
-        print(f"Executable file format '{k.exec_file_type.lower()}' not known.")
+        print(f"Executable file format '{k.executable_format.lower()}' not known.")
+        exit()
+    if k.machine.lower() == "i386":
+        machine = target.Isa.X86
+    elif k.machine.lower() == "x64":
+        machine = target.Isa.X64
+    else:
+        print(f"Machine type '{k.exec_file_type.lower()}' not known.")
         exit()
     k = CommandLineArguments(
         source_file=k.source_file,
         output_file=k.output_file,
         executable_format=executable_format,
-        is_main=not k.lib
+        is_main=not k.lib,
+        machine_type=machine
     )
     command_line_compile(k.source_file, k)
 

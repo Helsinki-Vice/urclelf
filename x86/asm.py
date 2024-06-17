@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 import enum
 from typing import Literal, Self
-from x86.register import Register
+from x86.register import Register, GeneralRegisters
 from error import Traceback
 
 class Mnemonic(enum.StrEnum):
@@ -180,20 +180,23 @@ class ASMCode:
     
     def add_move(self, destination: Register | EffectiveAddress | Immediate, source: Register | EffectiveAddress | Immediate):
         if destination != source:
-            self.add_instruction(Mnemonic.MOV, [destination, source])
+            if source == 0 and isinstance(destination, Register):
+                self.add_instruction(Mnemonic.XOR, [destination, destination]) # tehe speed
+            else:
+                self.add_instruction(Mnemonic.MOV, [destination, source])
     
     #TODO: get pushad/popad instructions working
-    def add_instructions_to_save_general_registers(self):
-        self.add_instruction(Mnemonic.PUSH, [Register.EAX])
-        self.add_instruction(Mnemonic.PUSH, [Register.EBX])
-        self.add_instruction(Mnemonic.PUSH, [Register.ECX])
-        self.add_instruction(Mnemonic.PUSH, [Register.EDX])
+    def add_instructions_to_save_general_registers(self, registers: GeneralRegisters):
+        self.add_instruction(Mnemonic.PUSH, [registers.a])
+        self.add_instruction(Mnemonic.PUSH, [registers.b])
+        self.add_instruction(Mnemonic.PUSH, [registers.c])
+        self.add_instruction(Mnemonic.PUSH, [registers.d])
             
-    def add_instructions_to_restore_general_registers(self):
-        self.add_instruction(Mnemonic.POP, [Register.EDX])
-        self.add_instruction(Mnemonic.POP, [Register.ECX])
-        self.add_instruction(Mnemonic.POP, [Register.EBX])
-        self.add_instruction(Mnemonic.POP, [Register.EAX])
+    def add_instructions_to_restore_general_registers(self, registers: GeneralRegisters):
+        self.add_instruction(Mnemonic.POP, [registers.d])
+        self.add_instruction(Mnemonic.POP, [registers.c])
+        self.add_instruction(Mnemonic.POP, [registers.b])
+        self.add_instruction(Mnemonic.POP, [registers.a])
     
     def __eq__(self, other: Self):
         return self.entry_point == other.entry_point and self.code == other.code
@@ -242,3 +245,25 @@ def sum_into_effective_address(values: list[int | Label | Register], pointer_siz
         return Traceback.new("Effective address cannot contain more than two registers")
     
     return EffectiveAddress(pointer_size=pointer_size, segment=segment, base=base, index=index, displacement=displacement)
+
+def generate_division_code(destination: Operand, source_1: Operand, source_2: Operand, bits: Literal[32, 64], do_modulo: bool):
+    
+    result = ASMCode(0, [])
+    
+    temp_regs: list[Register] = []
+    for register in [Register.EAX, Register.EBX, Register.EDX]:
+        if register != destination.value:
+            result.add_instruction(Mnemonic.PUSH, [register])
+            temp_regs.append(register)
+    result.add_move(Register.EAX, source_1.value)
+    result.add_move(Register.EDX, 0)
+    result.add_move(Register.EBX, source_2.value)
+    result.add_instruction(Mnemonic.DIV, [Register.EBX])
+    if do_modulo:
+        result.add_move(destination.value, Register.EDX)
+    else:
+        result.add_move(destination.value, Register.EAX)
+    for register in temp_regs.__reversed__():
+        result.add_instruction(Mnemonic.POP, [register])
+    
+    return result

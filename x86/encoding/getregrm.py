@@ -1,3 +1,4 @@
+from typing import Literal
 from x86.asm import ASMInstruction, EffectiveAddress, Operand
 from x86.register import Register
 from x86.encoding.encodings import RegisterSize, InstructionEncodingFormat
@@ -16,7 +17,7 @@ def get_operand_register_size(operand: Operand):
     else:
         return None
 
-def get_regrm_operands(instruction: ASMInstruction, encoding: InstructionEncodingFormat, direction_bit: bool):
+def get_regrm_operands(instruction: ASMInstruction, encoding: InstructionEncodingFormat, direction_bit: bool, bits: Literal[32, 64]):
 
         operands: list[Register | EffectiveAddress] = []
         for index, operand_format in enumerate(encoding.permitted_operands):
@@ -24,8 +25,8 @@ def get_regrm_operands(instruction: ASMInstruction, encoding: InstructionEncodin
                 # Ignore if it is an immediate or an implied operand
                 operand = instruction.operands[index]
                 if isinstance(operand.value, Register):
-                    if get_operand_register_size(operand) != operand_format.size:
-                        return Traceback.new(f"Invalid register size for operand index {index}: exprected {operand_format.size} bits, found {get_operand_register_size(operand)}.")
+                    if get_operand_register_size(operand) != operand_format.size and not (bits == 64 and get_operand_register_size(operand) == 64 and operand_format.size == 32):
+                        return Traceback.new(f"Invalid register size for operand index {index}: expected {operand_format.size} bits, found {get_operand_register_size(operand)}.")
                     operands.append(operand.value)
                     pass
                 elif isinstance(operand.value, EffectiveAddress):

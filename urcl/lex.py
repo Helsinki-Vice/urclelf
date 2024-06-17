@@ -217,7 +217,7 @@ def extract_integer_token(source: str) -> TokenParseResult:
         permitted_number_chars += "abcdef"
         index += 2
     while index < len(source):
-        if source[index] not in permitted_number_chars:
+        if source[index].lower() not in permitted_number_chars:
             break
         index += 1
     

@@ -2,11 +2,6 @@
 /*
     This program accepts an ASCII character as input and prints all characters in decending order until 0 (null) is reached.
     It uses getchar() from the C standard library.
-
-    RUNNING:
-    urclelf glibc_test.urcl -lib -o glibc_test.o
-    gcc glibc_test.o -m32 -no-pie -o glibc_test
-    ./glibc_test
 */
 
 .main                   // int main() {

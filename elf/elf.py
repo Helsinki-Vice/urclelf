@@ -5,6 +5,7 @@ based on file:///usr/include/elf.h"""
 import struct
 import enum
 from dataclasses import dataclass
+import structs
 
 class ElfClass(enum.Enum):
     "Word size of the target machine"
@@ -55,7 +56,8 @@ class Elf32ProgramHeaderType(enum.Enum):
     LOADABLE = bytes([1, 0, 0, 0])
 
 E_IDENT_SIZE = 16
-ELF_HEADER_SIZE = 52
+ELF_HEADER_SIZE_32_BIT = 52
+ELF_HEADER_SIZE_64_BIT = 54
 ELF32_PROGRAM_HEADER_SIZE = 32
 ELF32_SECTION_HEADER_SIZE = 40
 
@@ -98,46 +100,6 @@ class ELFIdentifier:
     def __bytes__(self):
         return self.magic + self.elf_class.value + self.endianess.value + self.version + self.os_abi.value + self.abi_version.value + self.padding
 
-
-@dataclass
-class ElfHeader:
-    """provides important information about the ELF"""
-    
-    elf_identifier: ELFIdentifier        # e_ident
-    file_type: FileType                  # e_type
-    target_isa: TargetISA                # e_machine
-    elf_version = ElfVersion.CURRENT     # e_version
-    entry_point: int                     # e_entry
-    program_header_offset: int           # e_phoff
-    section_header_offset: int           # e_shoff
-    flags: int                           # e_flags
-    elf_header_size: int                 # e_ehsize
-    program_header_entry_size: int       # e_phentsize
-    program_header_count: int            # e_phnum
-    section_header_entry_size: int       # e_shentsize
-    section_header_count: int            # shnum
-    section_header_name_index: int       # e_shstrndx
-    
-    
-    def __bytes__(self):
-        
-        result = bytes()
-        result += bytes(self.elf_identifier)
-        result += self.file_type.value
-        result += self.target_isa.value
-        result += self.elf_version.value
-        result += struct.pack("IIIIHHHHHH",
-            self.entry_point,
-            self.program_header_offset,
-            self.section_header_offset,
-            self.flags,
-            self.elf_header_size,
-            self.program_header_entry_size,
-            self.program_header_count,
-            self.section_header_entry_size,
-            self.section_header_count,
-            self.section_header_name_index)
-        return result
 
 @dataclass
 class Elf32ProgramHeader:
@@ -224,7 +186,7 @@ class Section:
 class Elf32:
     "ELF binary file"
     
-    elf_header: ElfHeader
+    elf_header: structs.ElfHeader
     program_header_table: Elf32ProgramHeaderTable
     section_header_table: Elf32SectionHeaderTable
     sections: dict[int, bytes]

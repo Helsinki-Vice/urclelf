@@ -1,12 +1,13 @@
+// Uses %NUMB to print the first seven squares.
+
 @DEFINE ITER R2
 @DEFINE NUMBER R1
 
-MOV ITER 0                              // iter = 0
+MOV ITER 0                              // int iter = 0;
 ._loop                                  // do {
-    MLT NUMBER ITER ITER                //     number = iter * iter
-    PSH NUMBER
-    CAL .urcl_port_numb_out             //     urcl_port_numb_out(number)
-    OUT %TEXT '\n'
-    INC ITER ITER                       //     iter++
-    BLE ._loop ITER 6                  // } while(iter <= 6);
-HLT                                     // exit()
+    MLT NUMBER ITER ITER                //     int number = iter * iter;
+    OUT %NUMB NUMBER                    //     urcl_port_numb_out(number);
+    OUT %TEXT '\n'                      //     puts('\n');
+    INC ITER ITER                       //     iter++;
+    BLE ._loop ITER 6                   // } while(iter <= 6);
+HLT                                     // exit();

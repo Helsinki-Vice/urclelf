@@ -3,23 +3,35 @@ import enum
 from dataclasses import dataclass
 from typing import Literal
 from x86.register import Register
+from x86.encoding.rex import RexPrefix
 
 # Links
 # http://www.c-jump.com/CIS77/CPU/x86/lecture.html
 # https://defuse.ca/online-x86-assembler.htm#disassembly
 # http://ref.x86asm.net/coder32.html
+# https://wiki.osdev.org/X86-64_Instruction_Encoding
 
 ThreeBits = Literal[0, 1, 2, 3, 4, 5, 6, 7]
 
-REGISTER_CODES: dict[ThreeBits, list[Register]] = {
-    0: [Register.AL, Register.AX, Register.EAX],
-    1: [Register.CL, Register.CX, Register.ECX],
-    2: [Register.DL, Register.DX, Register.EDX],
-    3: [Register.BL, Register.BX, Register.EBX],
-    4: [Register.AH, Register.SP, Register.ESP],
-    5: [Register.CH, Register.BP, Register.EBP],
-    6: [Register.DH, Register.SI, Register.ESI],
-    7: [Register.BH, Register.DI, Register.EDI],
+# Map of the extended (with rex r field) mod/reg/rm "reg" field to an actual register. In addition to the reg field, the register size is needed.
+REGISTER_CODES: dict[int, list[Register]] = {
+    #   (8 bit)         (16 bit)      (32 bit)        (64 bit)
+    0:  [Register.AL,   Register.AX,   Register.EAX,  Register.RAX],
+    1:  [Register.CL,   Register.CX,   Register.ECX,  Register.RCX],
+    2:  [Register.DL,   Register.DX,   Register.EDX,  Register.RDX],
+    3:  [Register.BL,   Register.BX,   Register.EBX,  Register.RBX],
+    4:  [Register.AH,   Register.SP,   Register.ESP,  Register.RSP],
+    5:  [Register.CH,   Register.BP,   Register.EBP,  Register.RBP],
+    6:  [Register.DH,   Register.SI,   Register.ESI,  Register.RSI],
+    7:  [Register.BH,   Register.DI,   Register.EDI,  Register.RDI],
+    8:  [Register.R8L,  Register.R8W,  Register.R8D,  Register.R8],
+    9:  [Register.R9L,  Register.R9W,  Register.R9D,  Register.R9],
+    10: [Register.R10L, Register.R10W, Register.R10D, Register.R10],
+    11: [Register.R11L, Register.R11W, Register.R11D, Register.R11],
+    12: [Register.R12L, Register.R12W, Register.R12D, Register.R12],
+    13: [Register.R13L, Register.R13W, Register.R13D, Register.R13],
+    14: [Register.R14L, Register.R14W, Register.R14D, Register.R14],
+    15: [Register.R15L, Register.R15W, Register.R15D, Register.R15]
 }
 
 class AddressingMode(enum.IntEnum):
@@ -107,8 +119,11 @@ class ScaleIndexByte:
     def __str__(self) -> str:
         return f"[{self.scale} {self.index} {self.base}]"
 
+
+
 @dataclass
 class X86MachineInstruction:
+    rex_prefix: RexPrefix | None
     prefixes: InstructionPrefixes
     opcode: Opcode
     mod_reg_rm: ModRegRM | None
@@ -118,7 +133,10 @@ class X86MachineInstruction:
     
     def get_displacement_index(self):
         
-        index = len(bytes(self.prefixes) + bytes(self.opcode))
+        index = 0
+        if self.rex_prefix:
+            index += len(bytes(self.rex_prefix))
+        index += len(bytes(self.prefixes) + bytes(self.opcode))
         if self.mod_reg_rm:
             index += len(bytes(self.mod_reg_rm))
         if self.sib:
@@ -132,6 +150,8 @@ class X86MachineInstruction:
     def __bytes__(self):
 
         machine_code = bytes()
+        if self.rex_prefix:
+            machine_code += bytes(self.rex_prefix)
         machine_code += bytes(self.prefixes)
         machine_code += bytes(self.opcode)
         if self.mod_reg_rm:
@@ -150,10 +170,25 @@ def get_register_code(register: Register):
     else:
         return 0 # Never hapens
 
-def register_from_code(code: ThreeBits, size: Literal[8, 16, 32]):
+def register_from_code(reg_field: ThreeBits, size: Literal[8, 16, 32, 64], rex_reg_extention: bool | None):
 
-    for register in REGISTER_CODES[code]:
-        if register.value.size == size:
-            return register
+    register: Register | None = None
+    for reg in REGISTER_CODES[(rex_reg_extention if rex_reg_extention is not None else 0) << 3 | reg_field]:
+        if reg.value.size == size:
+            register = reg
+            break
     else:
         raise ValueError("Unreachable code (Uh Oh!)")
+    
+    # When the rex prefix is present the encoding changes slightly
+    map_registers_unreachable_with_rex: dict[Register, Register] = {
+        Register.AH: Register.SPL,
+        Register.CL: Register.BPL,
+        Register.DL: Register.SIL,
+        Register.BL: Register.DIL
+    }
+
+    if register in map_registers_unreachable_with_rex.keys():
+        return map_registers_unreachable_with_rex[register]
+    
+    return register

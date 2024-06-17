@@ -1,12 +1,14 @@
 from x86.encoding.machine import ModRegRM, AddressingMode, ThreeBits, get_register_code
 from x86.register import Register
-from x86.asm import EffectiveAddress, PointerSize
+from x86.asm import EffectiveAddress, PointerSize, Label
 from error import Traceback
 
 def calculate_mod_field(rm_operand: Register | EffectiveAddress) -> AddressingMode | Traceback:
     
     if isinstance(rm_operand, Register):
         return AddressingMode.DIRECT
+    if isinstance(rm_operand.displacement, Label):
+        return AddressingMode.INDIRECT_WITH_FOUR_BYTE_DISPACEMENT
     if not isinstance(rm_operand.displacement, int):
         rm_operand = EffectiveAddress(PointerSize.DWORD, rm_operand.segment, rm_operand.base, rm_operand.index, rm_operand.scale, 0)
     assert isinstance(rm_operand.displacement, int)
@@ -25,7 +27,10 @@ def calculate_reg_field(operand: Register | EffectiveAddress | None, opcode_exte
     if opcode_extention is not None:
         return opcode_extention
     elif isinstance(operand, Register):
-        return get_register_code(operand)
+        result = get_register_code(operand)
+        # For the type checker...
+        assert result == 0 or result == 1 or result == 2 or result == 3 or result == 4 or result == 5 or result == 6 or result == 7
+        return result
     elif isinstance(operand, EffectiveAddress):
         return Traceback.new(f"Register field of the modregrm byte cannot hold a memory address ({operand} supplied)")
     elif operand is None:
@@ -49,14 +54,17 @@ def get_rm_field_from_effective_address(effective_address: EffectiveAddress):
 def calculate_rm_field(operand: Register | EffectiveAddress | None) -> ThreeBits | Traceback:
     
     if isinstance(operand, EffectiveAddress):
-        return get_rm_field_from_effective_address(operand)
+        result = get_rm_field_from_effective_address(operand)
     elif isinstance(operand, Register):
-        return get_register_code(operand)
+        result = get_register_code(operand)
     elif operand is None:
-        return Traceback.new("r/m field cannot be empty")
+        result = Traceback.new("r/m field cannot be empty")
     else:
         return operand
-
+    
+    # For the type checker...
+    assert isinstance(result, Traceback) or result == 0 or result == 1 or result == 2 or result == 3 or result == 4 or result == 5 or result == 6 or result == 7
+    return result
 
 def calculate_modregrm(register: Register | None, register_or_memory: Register | EffectiveAddress | None, opcode_extention: ThreeBits | None) -> ModRegRM | Traceback:
     

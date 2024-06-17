@@ -3,37 +3,37 @@
 02: add r r
 03: add r r
 04: add al i8
-05: add eax i32
+05: add rax i32
 08: or r r
 09: or r r
 0a: or r r
 0b: or r r
 0c: or al i8
-0d: or eax i32
+0d: or rax i32
 20: and r r
 21: and r r
 22: and r r
 23: and r r
 24: and al i8
-25: and eax i32
+25: and rax i32
 28: sub r r
 29: sub r r
 2a: sub r r
 2b: sub r r
 2c: sub al i8
-2d: sub eax i32
+2d: sub rax i32
 30: xor r r
 31: xor r r
 32: xor r r
 33: xor r r
 34: xor al i8
-35: xor eax i32
+35: xor rax i32
 38: cmp r r
 39: cmp r r
 3a: cmp r r
 3b: cmp r r
 3c: cmp al i8
-3d: cmp eax i32
+3d: cmp rax i32
 50: push rax
 51: push rcx
 52: push rdx
@@ -53,7 +53,7 @@
 68: push i32
 69: imul r32 r32 i32
 6a: push i8
-6B: imul r32 r32 i32
+6b: imul r32 r32 i32
 70: jo rel8
 71: jno rel8
 72: jb rel8
@@ -178,10 +178,10 @@ f6.6: div r8
 f6.7: idiv r8
 f7.2: not r32
 f7.3: neg r32
-f7.4: mul r32
-f7.5: imul r32
-f7.6: div r32
-f7.7: idiv r32
+f7.4: mul r64
+f7.5: imul r64
+f7.6: div r64
+f7.7: idiv r64
 fe.0: inc r32
 fe.1: dec r32
 ff.0: inc r32

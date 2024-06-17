@@ -1,0 +1,3 @@
+MOV R1 0
+INC R1 R1
+// No HLT, segfault

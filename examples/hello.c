@@ -1,3 +1,5 @@
+// Hello world using the URCL standard library.
+
 #include "../stdlib/stdlib.h"
 
 char MESSAGE[] = "Hello, URCL! ";
@@ -8,6 +10,7 @@ void _start() {
             urcl_port_text_out(MESSAGE[j]);
         }
         urcl_port_numb_out(i);
+        urcl_port_text_out('\n');
     }
 
     urcl_halt();

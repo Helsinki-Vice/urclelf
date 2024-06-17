@@ -1,0 +1,55 @@
+@DEFINE RETURN_VALUE_REGISTER R1 // eax
+@DEFINE TEMP_REGISTER_1 R1 // eax
+@DEFINE TEMP_REGISTER_2 R3 // ecx
+@DEFINE TEMP_REGISTER_3 R4 // edx
+
+/*
+    URCL standard library for unix-y systems.
+    These functions use System V i386 calling conventions.
+    Arguments are passed in reverse order and integers are returned through eax (R1).
+    R1, R3, and R4 will be destroyed if you do not save them!
+*/
+
+.urcl_halt
+    HLT
+
+.urcl_port_text_out
+    PSH BP
+    MOV BP SP
+    SUB SP SP 0
+    LLOD TEMP_REGISTER_1 BP 8
+    OUT %TEXT TEMP_REGISTER_1
+    MOV SP BP
+    POP BP
+    RET
+
+.urcl_port_numb_out
+    @DEFINE NUMBER R1
+    @DEFINE CHAR_COUNT R3
+    @DEFINE DIGIT R4
+    PSH BP
+    MOV BP SP
+    SUB SP SP 0
+    LLOD NUMBER BP 8
+
+    MOV CHAR_COUNT 0                    // char_count = 0
+    BRP .printn_loop_1 NUMBER           // if(number < 0) {...
+        NEG NUMBER NUMBER               //     number = -number
+        OUT %TEXT '-'                   //     print('-')
+                                        // }
+    .printn_loop_1                            // while(number) {
+        MOD DIGIT NUMBER 10             //     digit = number % 10
+        ADD DIGIT DIGIT '0'             //     digit = ascii(digit)
+        PSH DIGIT                       //     push(digit)
+        DIV NUMBER NUMBER 10            //     number /= 10
+        INC CHAR_COUNT CHAR_COUNT       //     char_count++
+        BNZ .printn_loop_1 NUMBER       // }
+
+    .printn_loop_2                      // while(char_count)
+        POP DIGIT                       //     digit = pop()
+        OUT %TEXT DIGIT                 //     print(digit)
+        DEC CHAR_COUNT CHAR_COUNT       //     char_count--
+        BNZ .printn_loop_2 CHAR_COUNT   // }
+        MOV SP BP
+        POP BP
+        RET

@@ -1,0 +1,3 @@
+// Non-standard feature: normally you need to print each character one at a time
+OUT %TEXT "Hello, World!\n"
+HLT

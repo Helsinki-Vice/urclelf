@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import struct
 
 from typing import Literal, Self
-from x86.encoding.machine import ModRegRM, X86MachineInstruction, AddressingMode, InstructionPrefixes, ScaleIndexByte
+from x86.encoding.machine import ModRegRM, X86MachineInstruction, AddressingMode, InstructionPrefixes, ScaleIndexByte, RexPrefix
 from x86.register import Register
 from x86.asm import EffectiveAddress, ASMInstruction, ASMCode, Label, Operand, Immediate
 from error import Traceback
@@ -11,12 +11,14 @@ from x86.encoding.sib import calculate_sib
 from x86.encoding.getregrm import get_operand_register_size, get_regrm_operands
 from x86.encoding.encodings import load_instruction_set_data, InstructionEncodingFormat, ImmediateType, OperandType, RegisterSize
 from x86.encoding.output import AssembledMachineCode, Relocation
+from x86.encoding.rex import rex_prefix_from
+import target
 
-def match_operand(operand: Operand, operand_type: OperandType) -> Literal[True] | Traceback:
+def match_operand(operand: Operand, operand_type: OperandType, bits: Literal[32, 64]) -> Literal[True] | Traceback:
 
     if isinstance(operand_type, RegisterSize):
         if isinstance(operand.value, (Register, EffectiveAddress)):
-            if get_operand_register_size(operand) != operand_type.size:
+            if get_operand_register_size(operand) != operand_type.size and not (bits == 64 and get_operand_register_size(operand) == 64 and operand_type.size == 32):
                 return Traceback.new(f"Expected {operand_type.size} bit register, got register {operand}")
             return True
         else:
@@ -34,12 +36,12 @@ def match_operand(operand: Operand, operand_type: OperandType) -> Literal[True] 
             return Traceback.new(f"Expected register {operand_type}, got {operand.value}")
         return True
 
-def get_mismatched_operand_errors(instruction: ASMInstruction, encoding: InstructionEncodingFormat) -> Traceback | None:
+def get_mismatched_operand_errors(instruction: ASMInstruction, encoding: InstructionEncodingFormat, bits: Literal[32, 64]) -> Traceback | None:
 
     if len(instruction.operands) != len(encoding.permitted_operands):
         return Traceback.new(f"Incorrect operand count of {len(instruction.operands)}, expected {len(encoding.permitted_operands)}")
     for index in range(len(encoding.permitted_operands)):
-        match_test = match_operand(instruction.operands[index], encoding.permitted_operands[index])
+        match_test = match_operand(instruction.operands[index], encoding.permitted_operands[index], bits)
         if isinstance(match_test, Traceback):
             error = match_test
             error.elaborate(f"Operand '{instruction.operands[index]}' is not of the expected type.")
@@ -51,7 +53,7 @@ def calculate_displacement(effective_address: Register | EffectiveAddress | None
     if not isinstance(effective_address, EffectiveAddress):
         return bytes(), None
     if isinstance(effective_address.displacement, Label):
-        return bytes(4), Relocation(effective_address.displacement.name, 0, 4, 0, False, False)
+        return bytes.fromhex("00000000"), Relocation(effective_address.displacement.name, 0, 4, 0, False, False)
     else:
         displacement = effective_address.displacement
     if mod_reg_rm:
@@ -71,7 +73,7 @@ def calculate_displacement(effective_address: Register | EffectiveAddress | None
     return bytes(), None
 
 
-def int_as_bytes(value: int, size: Literal[8, 16, 32], is_signed: bool) -> bytes | Traceback:
+def int_as_bytes(value: int, size: Literal[8, 16, 32, 64], is_signed: bool) -> bytes | Traceback:
 
     total_values = 2**size
     if is_signed:
@@ -84,7 +86,7 @@ def int_as_bytes(value: int, size: Literal[8, 16, 32], is_signed: bool) -> bytes
     if (value < min_value) or (value > max_value):
         return Traceback.new(f"Value {value} is not in the range {min_value:#x} thru {max_value:#x})")
     
-    symbol = {8: "B", 16: "H", 32: "I"}[size]
+    symbol = {8: "B", 16: "H", 32: "I", 64: "Q"}[size]
     symbol = symbol.lower() if is_signed else symbol
     
     return struct.pack(f"<{symbol}", value)
@@ -107,19 +109,19 @@ def encode_immediate(immediate_value: Immediate | None, immediate_type: Immediat
     return binary
 
 
-def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncodingFormat, instruction_address: int) -> AssembledMachineCode | Traceback:
+def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: InstructionEncodingFormat, instruction_address: int, bits: Literal[32, 64]) -> AssembledMachineCode | Traceback:
 
     if instruction.mnemonic != encoding.mnemonic:
         return Traceback.new(f"Wrong Mnemonic {instruction.mnemonic} != {encoding.mnemonic}")
     
-    bad_operand_error = get_mismatched_operand_errors(instruction, encoding)
+    bad_operand_error = get_mismatched_operand_errors(instruction, encoding, bits)
     if bad_operand_error is not None:
         bad_operand_error.elaborate("Instruction contains invalid operand")
         return bad_operand_error
 
     prefixes = InstructionPrefixes.none()
     
-    regrm_operands = get_regrm_operands(instruction, encoding, encoding.opcode.get_direction_bit())
+    regrm_operands = get_regrm_operands(instruction, encoding, encoding.opcode.get_direction_bit(), bits)
     if isinstance(regrm_operands, Traceback):
         error = regrm_operands
         error.elaborate("Cannot generate r/m field, bad operands.")
@@ -136,14 +138,16 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
             return error
     sib = calculate_sib(register_or_memory, mod_reg_rm)
     
+    rex_prefix: RexPrefix | None = rex_prefix_from(register, None, register_or_memory if isinstance(register_or_memory, Register) else None)
+
     displacement_bytes, displacement_relocation = calculate_displacement(register_or_memory, mod_reg_rm, sib)
     
-    machine_instruction = X86MachineInstruction(prefixes, encoding.opcode, mod_reg_rm, sib, displacement_bytes, bytes())
+    machine_instruction = X86MachineInstruction(rex_prefix, prefixes, encoding.opcode, mod_reg_rm, sib, displacement_bytes, bytes())
 
     immediate = encode_immediate(instruction.get_immediate(), encoding.get_immediate(), instruction_address + len(bytes(machine_instruction)))
     if isinstance(immediate, Relocation):
         immediate_relocation = immediate
-        immediate_bytes = bytes.fromhex("fcffffff")
+        immediate_bytes = bytes.fromhex("FCFFFFFF")
     elif isinstance(immediate, Traceback):
         error = immediate
         error.elaborate(f"Bad immediate {instruction.get_immediate()}")
@@ -152,7 +156,7 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
         immediate_relocation = None
         immediate_bytes = bytes(immediate)
 
-    machine_instruction = X86MachineInstruction(prefixes, encoding.opcode, mod_reg_rm, sib, displacement_bytes, immediate_bytes)
+    machine_instruction = X86MachineInstruction(rex_prefix, prefixes, encoding.opcode, mod_reg_rm, sib, displacement_bytes, immediate_bytes)
     relocations = []
     if displacement_relocation:
         displacement_relocation.index = machine_instruction.get_displacement_index()
@@ -163,10 +167,14 @@ def encode_instruction_using_encoding(instruction: ASMInstruction, encoding: Ins
             immediate_relocation.addend = -(len(bytes(machine_instruction)) - machine_instruction.get_immediate_index())
         relocations.append(immediate_relocation)
     
-    return AssembledMachineCode(bytes(machine_instruction), relocations, {})
+    if bits == 64:
+        machine = target.Isa.X64
+    else:
+        machine = target.Isa.X86
+    return AssembledMachineCode(bytes(machine_instruction), relocations, {}, machine)
 
 
-def assemble(program: ASMCode) -> AssembledMachineCode | Traceback:
+def assemble(program: ASMCode, bits: Literal[32, 64]) -> AssembledMachineCode | Traceback:
     
     program_bytes = bytes()
     relocations: list[Relocation] = []
@@ -175,7 +183,7 @@ def assemble(program: ASMCode) -> AssembledMachineCode | Traceback:
         if isinstance(instruction, Label):
             labels.update({instruction.name: len(program_bytes)})
             continue
-        encoded = encode(instruction, 0)
+        encoded = encode(instruction, 0, bits)
         if isinstance(encoded, Traceback):
             error = encoded
             error.elaborate(f"x86 Assembly contains an invalid instruction '{instruction}'")
@@ -185,12 +193,12 @@ def assemble(program: ASMCode) -> AssembledMachineCode | Traceback:
         program_bytes += encoded.binary
         relocations += encoded.relocations
     
-    return AssembledMachineCode(program_bytes, relocations, labels)
+    return AssembledMachineCode(program_bytes, relocations, labels, target.Isa.X86)
 
 
-def encode(instruction: ASMInstruction, instruction_address: int) -> AssembledMachineCode | Traceback:
+def encode(instruction: ASMInstruction, instruction_address: int, bits: Literal[32, 64]) -> AssembledMachineCode | Traceback:
 
-    instruction_formats = load_instruction_set_data()
+    instruction_formats = load_instruction_set_data(bits)
     if isinstance(instruction_formats, Traceback):
         error = instruction_formats
         error.elaborate("x86 ISA data loading failed")
@@ -198,7 +206,7 @@ def encode(instruction: ASMInstruction, instruction_address: int) -> AssembledMa
     smallest_encoding: AssembledMachineCode | None = None
     failures: list[Traceback] = []
     for format in instruction_formats:
-        encode_result = encode_instruction_using_encoding(instruction, format, instruction_address)
+        encode_result = encode_instruction_using_encoding(instruction, format, instruction_address, bits)
         if isinstance(encode_result, Traceback):
             if instruction.mnemonic == format.mnemonic:
                 encode_result.elaborate(f"Failure to encode {instruction.mnemonic} with opcode {bytes(format.opcode).hex()}")

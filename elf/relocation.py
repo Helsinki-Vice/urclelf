@@ -22,11 +22,16 @@ def determine_symbol_type(symbol_name: str):
 def make_symbol_table(defined_symbols: dict[str, int], undefined_symbols: list[str], symbol_name_table: bytes, section_index: int) -> elf.SymbolTable:
 
     entries: list[elf.Elf32SymbolTableEntry] = []
+    all_symbol_names: list[str] = []
     for symbol_name in defined_symbols.keys():
-        entries.append(elf.Elf32SymbolTableEntry(symbol_name_table.index(symbol_name.encode("ascii")), defined_symbols[symbol_name], 0, determine_symbol_type(symbol_name), determine_symbol_binding(symbol_name), 0, section_index))
+        if symbol_name not in all_symbol_names:
+            entries.append(elf.Elf32SymbolTableEntry(symbol_name_table.index(symbol_name.encode("ascii")+b"\0"), defined_symbols[symbol_name], 0, determine_symbol_type(symbol_name), determine_symbol_binding(symbol_name), 0, section_index))
+            all_symbol_names.append(symbol_name)
     
     for symbol_name in undefined_symbols:
-        entries.append(elf.Elf32SymbolTableEntry(symbol_name_table.index(symbol_name.encode("ascii")), 0, 0, elf.SymbolType.NONE, elf.SymbolBinding.GLOBAL, 0, 0))
+        if symbol_name not in all_symbol_names:
+            entries.append(elf.Elf32SymbolTableEntry(symbol_name_table.index(symbol_name.encode("ascii")+b"\0"), 0, 0, elf.SymbolType.NONE, elf.SymbolBinding.GLOBAL, 0, 0))
+            all_symbol_names.append(symbol_name)
     # All of the local symbols must come first
     entries.sort(key=lambda s: s.binding==elf.SymbolBinding.LOCAL, reverse=True)
     entries = [elf.Elf32SymbolTableEntry(0, 0, 0, elf.SymbolType.NONE, elf.SymbolBinding.GLOBAL, 0, 0)] + entries
@@ -42,33 +47,40 @@ def make_relocation_table(relocations: list[x86.Relocation], defined_symbol_name
             if symbol_name == relocation.symbol_name:
                 symbol_index = index
                 continue
-        entries.append(elf.RelocationTableEntryWithAddend(relocation.index, elf.X86RelocationType.PC_RELATIVE_32, symbol_index, 0))
+        if relocation.is_relative:
+            relocation_type = elf.X86RelocationType.PC_RELATIVE_32
+            explicit_addend = -4
+        else:
+            relocation_type = elf.X86RelocationType.SIMPLE_32
+            explicit_addend = 0
+        
+        entries.append(elf.RelocationTableEntryWithAddend(relocation.index, relocation_type, symbol_index, explicit_addend))
     
     return elf.RelocationTable(entries)
 
-def make_simple_elf_header() -> elf.ElfHeader:
+def make_simple_elf_header(elf_class: elf.ElfClass) -> elf.ElfHeader:
 
     return elf.ElfHeader(
-        elf_identifier            = elf.ELFIdentifier(elf.ElfClass.BITS_32, elf.Endianess.LSB, elf.OSABI.GENERIC_UNIX),
+        elf_identifier            = elf.ELFIdentifier(elf_class, elf.Endianess.LSB, elf.OSABI.SYSTEM_V),
         file_type                 = elf.FileType.RELOCATABLE,
-        target_isa                = elf.TargetISA.X86,
+        target_isa                = elf.TargetISA.X64 if elf_class == elf.ElfClass.BITS_64 else elf.TargetISA.X86,
         entry_point               = 0,
         program_header_offset     = 0,
-        section_header_offset     = elf.ELF_HEADER_SIZE,
+        section_header_offset     = elf.ELF64_HEADER_SIZE if elf_class == elf.ElfClass.BITS_64 else elf.ELF32_HEADER_SIZE,
         flags                     = 0,
-        elf_header_size           = elf.ELF_HEADER_SIZE,
+        elf_header_size           = elf.ELF64_HEADER_SIZE if elf_class == elf.ElfClass.BITS_64 else elf.ELF32_HEADER_SIZE,
         program_header_entry_size = 0,
         program_header_count      = 0,
-        section_header_entry_size = elf.ELF32_SECTION_HEADER_SIZE,
+        section_header_entry_size = elf.ELF64_SECTION_HEADER_SIZE if elf_class == elf.ElfClass.BITS_64 else elf.ELF32_SECTION_HEADER_SIZE,
         section_header_count      = 0,
         section_header_name_index = 0,
     )
 
-def make_relocatable_elf(relocatable_code: x86.AssembledMachineCode) -> elf.Elf32:
+def make_relocatable_elf(relocatable_code: x86.AssembledMachineCode, is_64_bit=False) -> elf.Elf32:
     
     file_offset = 0
 
-    elf_header = make_simple_elf_header()
+    elf_header = make_simple_elf_header(elf.ElfClass.BITS_64 if is_64_bit else elf.ElfClass.BITS_32)
     elf_header.section_header_offset = elf_header.elf_header_size
     elf_header.section_header_count = 6
     file_offset += elf_header.elf_header_size
@@ -109,10 +121,10 @@ def make_relocatable_elf(relocatable_code: x86.AssembledMachineCode) -> elf.Elf3
     symbol_table = make_symbol_table(relocatable_code.symbols, undefined_symbol_names, symbol_name_table_bytes, 5)
     symbol_table_section_header.info = symbol_table.get_symbol_index_of_first_nonlocal_symbol()
     symbol_table_section_header.link_index = section_header_table.entries.index(symbol_table_names_section_header)
-    symbol_table_section_header.entry_size = 16
-    relocation_section_header.entry_size = 12
-    symbol_table_bytes = bytes(symbol_table)
-    reloaction_table_bytes = bytes(make_relocation_table(relocatable_code.relocations, all_symbol_names, symbol_table))
+    symbol_table_section_header.entry_size = elf.ELF64_SYMBOL_TABLE_ENTRY_SIZE if elf_header.elf_identifier.elf_class == elf.ElfClass.BITS_64 else elf.ELF32_SYMBOL_TABLE_ENTRY_SIZE
+    relocation_section_header.entry_size = elf.ELF64_RELOCATION_TABLE_ENTRY_SIZE if elf_header.elf_identifier.elf_class == elf.ElfClass.BITS_64 else elf.ELF32_RELOCATION_TABLE_ENTRY_SIZE
+    symbol_table_bytes = elf.symbol_table_to_bytes(symbol_table, elf_header.elf_identifier.elf_class)
+    reloaction_table_bytes = elf.relocation_table_to_bytes(make_relocation_table(relocatable_code.relocations, all_symbol_names, symbol_table), elf_header.elf_identifier.elf_class)
 
     section_data = [b"", section_names, symbol_name_table_bytes, symbol_table_bytes, reloaction_table_bytes, relocatable_code.binary]
     sections: dict[int, bytes] = {}

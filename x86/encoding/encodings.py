@@ -9,12 +9,12 @@ from error import Traceback
 
 @dataclass(frozen=True)
 class ImmediateType:
-    size: Literal[1, 2, 4]
+    size: Literal[1, 2, 4, 8]
     is_relative: bool = False
 
 @dataclass(frozen=True)
 class RegisterSize:
-    size: Literal[8, 16, 32] | None = None
+    size: Literal[8, 16, 32, 64] | None = None
 
 OperandType = RegisterSize | ImmediateType | Register
 
@@ -26,7 +26,7 @@ class InstructionEncodingFormat:
     permitted_operands: list[OperandType]
     
     @staticmethod
-    def from_str(encoding: str):
+    def from_str(encoding: str, bits: Literal[32, 64]):
 
         opcode = Opcode(False, 0)
         if ":" not in encoding:
@@ -51,25 +51,31 @@ class InstructionEncodingFormat:
             if reg:
                 operand_formats.append(reg)
             elif operand == "r":
-                operand_formats.append(RegisterSize(32 if opcode.get_register_size_bit() else 8))
+                operand_formats.append(RegisterSize(bits if opcode.get_register_size_bit() else 8))
             elif operand == "r8":
                 operand_formats.append(RegisterSize(8))
             elif operand == "r16": #FIXME: 16-bit does not work yet
                 operand_formats.append(RegisterSize(16))
             elif operand == "r32":
                 operand_formats.append(RegisterSize(32))
+            elif operand == "r64":
+                operand_formats.append(RegisterSize(64))
             elif operand == "i8":
                 operand_formats.append(ImmediateType(1, False))
             elif operand == "i16":
                 operand_formats.append(ImmediateType(2, False))
             elif operand == "i32":
                 operand_formats.append(ImmediateType(4, False))
+            elif operand == "i64":
+                operand_formats.append(ImmediateType(8, False))
             elif operand == "rel8":
                 operand_formats.append(ImmediateType(1, True))
             elif operand == "rel16":
                 operand_formats.append(ImmediateType(2, True))
             elif operand == "rel32":
                 operand_formats.append(ImmediateType(4, True))
+            elif operand == "rel64":
+                operand_formats.append(ImmediateType(8, True))
             elif operand == "es":
                 pass
             else:
@@ -83,13 +89,18 @@ class InstructionEncodingFormat:
             if isinstance(operand_format, ImmediateType):
                 return operand_format
 
-def load_instruction_set_data() -> list[InstructionEncodingFormat] | Traceback:
+def load_instruction_set_data(bits: Literal[32, 64]) -> list[InstructionEncodingFormat] | Traceback:
 
-    with open("./x86/encoding/isa_data_x86.txt", "r") as file:
+    if bits == 64:
+        path = "./x86/encoding/isa_data_x64.txt"
+    else:
+        path = "./x86/encoding/isa_data_x86.txt"
+    
+    with open(path, "r") as file:
         formats = file.read().splitlines()
         encodings: list[InstructionEncodingFormat] = []
         for format in formats:
-            encoding = InstructionEncodingFormat.from_str(format)
+            encoding = InstructionEncodingFormat.from_str(format, bits)
             if isinstance(encoding, Traceback):
                 error = encoding
                 error.elaborate(f"x86 ISA data contains an invalid line '{format}'")
