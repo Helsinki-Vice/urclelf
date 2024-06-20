@@ -9,7 +9,6 @@
     Arguments are passed in reverse order and integers are returned through eax (R1).
     R1, R3, and R4 will be destroyed if you do not save them!
 */
-
 .urcl_halt
     HLT
 
