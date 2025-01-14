@@ -1,0 +1,2 @@
+.greeting
+DW ["Hello from the .data section!" 0]
