@@ -4,16 +4,15 @@ import os
 import pathlib
 from dataclasses import dataclass
 
-OLD_CWD = pathlib.Path(os.getcwd()).resolve()
-CURRENT_DIR = pathlib.Path(__file__).parent.resolve()
-LIB_DIR = CURRENT_DIR.joinpath("lib").resolve().relative_to(CURRENT_DIR).resolve()
-BIN_DIR = CURRENT_DIR.joinpath("bin").resolve().relative_to(CURRENT_DIR).resolve()
+OLD_CWD = pathlib.Path(os.getcwd()).resolve(True)
+CURRENT_DIR = pathlib.Path(__file__).parent.resolve(True)
+BIN_DIR = CURRENT_DIR.joinpath("bin").resolve().relative_to(CURRENT_DIR).resolve(True)
 os.chdir(CURRENT_DIR)
 
-from compile import compile_urcl_to_executable
-from elf import Elf32
+import urcl
+from x86codegen import compile_urcl_to_executable, compile_urcl_to_intel_assembly
+from x86 import ASMCode
 import target
-import x86
 from error import Traceback
 
 @dataclass
@@ -26,23 +25,26 @@ class CommandLineArguments:
 
 def command_line_compile(source_path: str, options: CommandLineArguments):
 
-    with open(source_path, "r") as file:
-        program = compile_urcl_to_executable(
-            file.read(),
-            target.CompileOptions(
-                target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
-                executable_type=target.ExecutableType.OBJECT,
-                executable_format=options.executable_format,
-                is_main=options.is_main
-            )
+    with open(OLD_CWD.joinpath(pathlib.Path(source_path).resolve(True)), "r") as file:
+        compile_options = target.CompileOptions(
+            target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
+            executable_type=target.ExecutableType.OBJECT,
+            executable_format=options.executable_format,
+            is_main=options.is_main
         )
-        if isinstance(program, bytes):
-            bytes_for_file = program
+        if compile_options.executable_format == target.ExecutableFormat.ASSEMBLY:
+            program = str(compile_urcl_to_intel_assembly(file.read(), compile_options))
+        elif compile_options.executable_format == target.ExecutableFormat.URCL:
+            program = str(urcl.parse(file.read()))
+        else:
+            program = compile_urcl_to_executable(file.read(), compile_options)
+        if isinstance(program, (str, bytes)):
+            output = program
         else:
             print(program)
             exit()
-        with open(options.output_file, "w+b") as file:
-            file.write(bytes_for_file)
+        with open(options.output_file, "w+" if isinstance(output, str) else "w+b") as file:
+            file.write(output)
 
 def main():
 
@@ -55,21 +57,23 @@ def main():
     k = argument_parser.parse_args(sys.argv[1:])
     if k.output_file is None:
         filename = k.source_file.split("/")[-1].split(".")[0] + ".o"
-        output_path = BIN_DIR.joinpath(filename).resolve().relative_to(BIN_DIR).resolve()
+        output_path = BIN_DIR.joinpath(filename).resolve(True)
         k.output_file = str(output_path)
     
     if k.executable_format.lower() == "bin":
         executable_format = target.ExecutableFormat.FLAT
     elif k.executable_format.lower() in ["elf", None]:
         executable_format = target.ExecutableFormat.ELF
-    elif k.executable_format.lower() == "coff":
-        executable_format = target.ExecutableFormat.COFF
+    elif k.executable_format.lower() == "asm":
+        executable_format = target.ExecutableFormat.ASSEMBLY
+    elif k.executable_format.lower() == "urcl":
+        executable_format = target.ExecutableFormat.URCL
     else:
         print(f"Executable file format '{k.executable_format.lower()}' not known.")
         exit()
-    if k.machine.lower() == "i386":
+    if k.machine.lower() in ["i386", "x86", "i686", "x86_32"]:
         machine = target.Isa.X86
-    elif k.machine.lower() == "x64":
+    elif k.machine.lower() in ["x64", "amd64", "x86_64"]:
         machine = target.Isa.X64
     else:
         print(f"Machine type '{k.exec_file_type.lower()}' not known.")

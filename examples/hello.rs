@@ -3,7 +3,7 @@
 extern "C" {
     fn urcl_port_text_out(symbol: u32);
     fn urcl_port_numb_out(number: u32);
-    fn urcl_halt();
+    fn urcl_halt() -> !;
 }
 
 const MESSAGE: &str = "Hello, URCL! ";

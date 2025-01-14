@@ -15,7 +15,7 @@ class Traceback:
     def new(cls, message: str, line_number:int=0, column_number:int=1):
         return Traceback([Message(message, line_number, column_number)])
     
-    def elaborate(self, message: str, line_number:int=0, column_number:int=1):
+    def elaborate(self, message: str, line_number:int=0, column_number:int=0):
 
         if not line_number:
             line_number = self.errors[0].line
@@ -42,7 +42,3 @@ class Traceback:
         lines.append("=" * traceback_width)
 
         return "\n".join(lines)
-
-#string = b"Hello from x86 URCL!\n"
-#for char in string:
-#    print(f"out 1 {char}")

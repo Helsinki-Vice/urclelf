@@ -127,8 +127,9 @@ class Operand:
     def as_memory(self, scale: Literal[1, 2, 4], offset: Register | int) -> EffectiveAddress:
         if isinstance(self.value, Register):
             if isinstance(offset, Register):
-                memory = EffectiveAddress(base=self.value, scale=scale, index=offset)
+                memory = EffectiveAddress(base=self.value, scale=scale, index=offset, displacement=Label("urcl_m0"))
             else:
+                # HACK FIXME
                 memory = EffectiveAddress(base=self.value, scale=scale, displacement=offset)
         elif isinstance(self.value, EffectiveAddress):
             memory = self.value
@@ -244,7 +245,7 @@ def sum_into_effective_address(values: list[int | Label | Register], pointer_siz
     else:
         return Traceback.new("Effective address cannot contain more than two registers")
     
-    return EffectiveAddress(pointer_size=pointer_size, segment=segment, base=base, index=index, displacement=displacement)
+    return EffectiveAddress(pointer_size=pointer_size, segment=segment, base=base, index=index, displacement=displacement, scale=4)
 
 def generate_division_code(destination: Operand, source_1: Operand, source_2: Operand, bits: Literal[32, 64], do_modulo: bool):
     

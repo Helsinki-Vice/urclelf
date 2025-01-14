@@ -14,12 +14,14 @@ class ByteOrder(enum.Enum):
 class OsAbi(enum.Enum):
     SYSV = enum.auto()
     WINDOWS_NT_32 = enum.auto()
-    UEFI = enum.auto()
+    FREESTANDING = enum.auto()
 
 class ExecutableFormat(enum.Enum):
     FLAT = enum.auto()
     ELF = enum.auto()
-    COFF = enum.auto()
+    # TODO: Make move these to a new enum
+    ASSEMBLY = enum.auto()
+    URCL = enum.auto()
 
 class ExecutableType(enum.Enum):
     OBJECT = enum.auto()
