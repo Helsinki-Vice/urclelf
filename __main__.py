@@ -73,8 +73,8 @@ def main():
         print(f"Machine type '{k.exec_file_type.lower()}' not known.")
         exit()
     k = CommandLineArguments(
-        source_file=k.source_file,
-        output_file=k.output_file,
+        source_file=str(OLD_CWD.joinpath(k.source_file).resolve()),
+        output_file=str(OLD_CWD.joinpath(k.output_file).resolve()),
         executable_format=executable_format,
         is_main=not k.lib,
         machine_type=machine

@@ -45,7 +45,7 @@ glibc_test:
 	gcc bin/glibc_test.o -m32 -no-pie -o bin/glibc_test
 	bin/glibc_test
 
-hello_rust:
+hello_rust: # Requires i686-unknown-linux-gnu target
 	make stdlib
 	rustc examples/hello.rs -o bin/hello_rust --target i686-unknown-linux-gnu -Clink-arg=./bin/stdlib.o
 	bin/hello_rust

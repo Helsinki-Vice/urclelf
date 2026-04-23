@@ -10,10 +10,13 @@ urclelf requires Python 3.11, but no external packages. Simply `cd` into the pro
 ## Application Binary Interface
 urclelf only produces 32-bit, non-position-independent, relocatable ELF objects using the i386 supplement of the System V ABI. These objects should be interoperable with those produced by other compilers like nasm and gcc. x64 codegen is in the works, but is mostly broken — pass -m x64 to urclelf to enable.
 
-### nasm
+### Linking via nasm
 `nasm my_program.asm -f elf32 -o my_program.o`
 
-### gcc
+### Linking via gcc
+You'll need the 32-bit libraries and cross-compiler if you want to use `gcc` to link programs. On Debian the packages can be installed with:
+`sudo apt install gcc-i686-linux-gnu libc6-dev`
+Then link using:
 `gcc my_program.c -c -m32 -no-pie -o my_program.o -nostartfiles` (omit `-nostartfiles` if you have defined `main`)
 
 ## Linking
