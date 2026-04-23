@@ -62,8 +62,6 @@ def main():
         executable_format = target.ExecutableFormat.FLAT
     elif k.executable_format.lower() in ["elf", None]:
         executable_format = target.ExecutableFormat.ELF
-    elif k.executable_format.lower() == "coff":
-        executable_format = target.ExecutableFormat.COFF
     else:
         print(f"Executable file format '{k.executable_format.lower()}' not known.")
         exit()

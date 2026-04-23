@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 import enum
-from typing import Literal
+from typing import Literal, Callable
 
 import urcl
 import x86
@@ -10,7 +10,6 @@ from error import Traceback
 import compile_x86
 import target
 import elf
-
 
 PARSING_ERROR_MESSAGE = "Could not parse urcl source"
 NO_ERROR_EXIT_CODE = 0
@@ -34,13 +33,10 @@ def urcl_instruction_to_x86_assembly(instruction: urcl.urclcst.InstructionCSTNod
 
     return x86_code
 
-def compile_urcl_to_x86_asm(urcl_program: urcl.CST, is_main: bool) -> x86.ASMCode | Traceback:
+def compile_urcl_to_x86_asm(urcl_program: urcl.CST, is_main: bool, bits: Literal[32, 64]) -> x86.ASMCode | Traceback:
     
     x86_assembly_code = x86.ASMCode(None, [])
-    #x86_assembly_code.code.append(x86.Label("_start"))
-    #x86_assembly_code.add_move(x86.Register.EBP, x86.Label("urclelf_stack_top")) # Setting up stack
-    #x86_assembly_code.add_move(x86.Register.ESP, x86.Label("urclelf_stack_top")) # Setting up stack
-
+    
     if is_main:
         x86_assembly_code.code.append(x86.Label("_start"))
     for line in urcl_program.lines:
@@ -51,36 +47,7 @@ def compile_urcl_to_x86_asm(urcl_program: urcl.CST, is_main: bool) -> x86.ASMCod
             else:
                 continue # TODO: Implement headers here
         
-        x86_instruction = urcl_instruction_to_x86_assembly(line, 32)
-        if isinstance(x86_instruction, Traceback):
-            error = x86_instruction
-            error.elaborate(f"URCL Instruction {line} could not be compiled into x86", line_number=line.line_number, column_number=line.column_number)
-            return error
-        for x86_instruction in x86_instruction.code:
-            if isinstance(x86_instruction, x86.Label):
-                continue
-            x86_assembly_code.add_instruction(x86_instruction.mnemonic, [op.value for op in x86_instruction.operands])
-    
-    return x86_assembly_code
-
-def compile_urcl_to_x64_asm(urcl_program: urcl.CST, is_main: bool) -> x86.ASMCode | Traceback:
-    
-    x86_assembly_code = x86.ASMCode(None, [])
-    #x86_assembly_code.code.append(x86.Label("_start"))
-    #x86_assembly_code.add_move(x86.Register.EBP, x86.Label("urclelf_stack_top")) # Setting up stack
-    #x86_assembly_code.add_move(x86.Register.ESP, x86.Label("urclelf_stack_top")) # Setting up stack
-
-    if is_main:
-        x86_assembly_code.code.append(x86.Label("_start"))
-    for line in urcl_program.lines:
-        if isinstance(line, urcl.urclcst.Terminal):
-            if isinstance(line.value, urcl.Label):
-                x86_assembly_code.code.append(x86.Label(line.value.name))
-                continue
-            else:
-                continue # TODO: Implement headers here
-        
-        x86_instruction = urcl_instruction_to_x86_assembly(line, 64)
+        x86_instruction = urcl_instruction_to_x86_assembly(line, bits)
         if isinstance(x86_instruction, Traceback):
             error = x86_instruction
             error.elaborate(f"URCL Instruction {line} could not be compiled into x86", line_number=line.line_number, column_number=line.column_number)
@@ -100,55 +67,40 @@ def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptio
         error.elaborate("Code cannot be parsed, aborting compilation")
         return error
     
-    if options.target.isa == target.Isa.X86:
-        x86_assembly_code = compile_urcl_to_x86_asm(urcl_program, options.is_main)
-        if isinstance(x86_assembly_code, Traceback):
-            error = x86_assembly_code
-            error.elaborate("URCL code does not translate to x86")
-            return error
-        
-        machine_code = x86.assemble(x86_assembly_code, 64 if options.target.isa==target.Isa.X64 else 32)
-        if isinstance(machine_code, Traceback):
-            error = machine_code
-            error.elaborate("Assembled x86 program does not convert to machine code")
-            return error
-        
-        return machine_code
+    bits = options.target.get_word_size()
+    if isinstance(bits, Traceback):
+        error = bits
+        return error
     
-    elif options.target.isa == target.Isa.X64:
-        x86_assembly_code = compile_urcl_to_x64_asm(urcl_program, options.is_main)
-        if isinstance(x86_assembly_code, Traceback):
-            error = x86_assembly_code
-            error.elaborate("URCL code does not translate to x64")
-            return error
-        
-        machine_code = x86.assemble(x86_assembly_code, 64 if options.target.isa==target.Isa.X64 else 32)
-        if isinstance(machine_code, Traceback):
-            error = machine_code
-            error.elaborate("Assembled x64 program does not convert to machine code")
-            return error
-        
-        return machine_code
+    assembly_code = compile_urcl_to_x86_asm(urcl_program, options.is_main, bits)
+    if isinstance(assembly_code, Traceback):
+        error = assembly_code
+        error.elaborate(f"URCL code does not translate to {options.target.isa}")
+        return error
     
-    else:
-        return Traceback.new("Only x86 and x64 are currently supported")
+    machine_code = x86.assemble(assembly_code, bits)
+    if isinstance(machine_code, Traceback):
+        error = machine_code
+        error.elaborate(f"Assembled {options.target.isa} program does not convert to machine code")
+        return error
+    
+    return machine_code
+    
+    
 
 def compile_urcl_to_executable(source: str, options: target.CompileOptions) -> bytes | Traceback:
     
-    if options.executable_format == target.ExecutableFormat.FLAT:
-        output_binary = compile_urcl_source_to_flat_binary(source, options)
-    elif options.executable_format not in [target.ExecutableFormat.ELF]:
-        return Traceback.new(f"Executable format {options.executable_format} is not supported")
-    else:
-        assembled_code = compile_urcl_source_to_flat_binary(source, options)
-        if isinstance(assembled_code, Traceback):
-            error = assembled_code
-            error.elaborate("Machine code could not be generated")
-            return error
+    flat_binary = compile_urcl_source_to_flat_binary(source, options)
+    if isinstance(flat_binary, Traceback):
+        error = flat_binary
+        error.elaborate("Machine code could not be generated")
+        return error
     
-    if options.executable_format == target.ExecutableFormat.ELF:
-        output_binary =  elf.make_relocatable_elf(assembled_code, is_64_bit=(options.target.isa==target.Isa.X64))
+    if options.executable_format == target.ExecutableFormat.FLAT:
+        output_binary = flat_binary.binary
+    elif options.executable_format == target.ExecutableFormat.ELF:
+        output_binary = elf.make_relocatable_elf(flat_binary, is_64_bit=(options.target.isa==target.Isa.X64))
     else:
-        output_binary = b"" #coff.compile_to_relocatable_file(assembled_code)
+        return Traceback.new(f"Executable format {options.executable_format} is not supported")
     
     return bytes(output_binary)

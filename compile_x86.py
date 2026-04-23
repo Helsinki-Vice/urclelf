@@ -55,13 +55,6 @@ def convert_urcl_register_to_x86(register: urcl.GeneralRegister | urcl.BasePoint
         # TODO: add memory-mapped registers
         return Traceback.new(f"URCL register {register} could not be mapped to a machine register or memory address")
     
-        #effective_address = x86.sum_into_effective_address([], x86.PointerSize.DWORD)
-        #if isinstance(effective_address, Traceback):
-        #    error = effective_address
-        #    error.elaborate(f"URCL register {register} could not be mapped to a memory address")
-        #    return error
-        #return x86.Operand(effective_address)
-    
 def get_destination_register(instruction: urcl.InstructionCSTNode, bits: Literal[32, 64]) -> urcl.GeneralRegister | urcl.BasePointer | urcl.StackPointer | Traceback:
 
     if not instruction.operands:
@@ -224,6 +217,7 @@ def compile_three_operand_jump_instruction(instruction: urcl.InstructionCSTNode,
 # FIXME: x64 support
 def compile_division_instruction(instruction: urcl.InstructionCSTNode, bits: Literal[32, 64]):
     
+    x86_code = x86.ASMCode(0, [])
     if instruction.mnemonic in [urcl.Mnemonic.DIV, urcl.Mnemonic.MOD]:
         destination = get_x86_destination_register(instruction, bits)
         if isinstance(destination, Traceback):
@@ -235,7 +229,9 @@ def compile_division_instruction(instruction: urcl.InstructionCSTNode, bits: Lit
         if isinstance(source_2, Traceback):
             return source_2
         
-    return x86.generate_division_code(x86.Operand(destination), source_1, source_2, bits, do_modulo=instruction.mnemonic==urcl.Mnemonic.MOD)
+        x86_code = x86.generate_division_code(x86.Operand(destination), source_1, source_2, bits, do_modulo=instruction.mnemonic==urcl.Mnemonic.MOD)
+
+    return x86_code
 
 def compile_out_instruction(instruction: urcl.InstructionCSTNode, bits: Literal[32, 64]):
     
@@ -288,7 +284,12 @@ def compile_out_instruction(instruction: urcl.InstructionCSTNode, bits: Literal[
             x86_code.add_instruction(x86.Mnemonic.ADD, [registers.sp, int_count * 4])
             x86_code.add_instructions_to_restore_general_registers(registers)
         else:
-            x86_code.add_instruction(x86.Mnemonic.PUSH, [urcl_operand_to_x86(instruction.operands[1], bits).value])
+            argument = urcl_operand_to_x86(instruction.operands[1], bits)
+            if isinstance(argument, Traceback):
+                error = argument
+                error.elaborate(f"OUT instruction cannot compile operand {instruction.operands[1]}")
+                return error
+            x86_code.add_instruction(x86.Mnemonic.PUSH, [argument.value])
             x86_code.add_instruction(x86.Mnemonic.CALL, [x86.Label(f"urcl_port_{port.name.lower()}_out")])
 
     return x86_code
@@ -444,8 +445,7 @@ def compile_list_load_instruction(instruction: urcl.InstructionCSTNode, bits: Li
             error.elaborate(f"LLOD base address '{instruction.operands[1]}' is not valid")
             return error
         source.value
-        #if isinstance(source.value, x86.EffectiveAddress):
-        #    return Traceback.new(f"Source operand for load instruction must be a register, not {instruction.operands[1]}")
+        
         if len(instruction.operands) == 3:
             index = instruction.operands[2].value
             if not isinstance(index, int):
@@ -454,6 +454,8 @@ def compile_list_load_instruction(instruction: urcl.InstructionCSTNode, bits: Li
             index = 0
         if isinstance(source, Traceback):
             return source
+        if isinstance(source.value, x86.EffectiveAddress):
+            return Traceback.new(f"Source operand for load instruction must be a register, not {instruction.operands[1]}")
         memory = x86.sum_into_effective_address([source.value, index], x86.PointerSize.DWORD)
         if isinstance(memory, Traceback):
             error = memory
