@@ -23,26 +23,37 @@ class CommandLineArguments:
     executable_format: target.ExecutableFormat
     machine_type: target.Isa
     is_main: bool
+    use_stdin: bool
+    use_stdout: bool
 
-def command_line_compile(source_path: str, options: CommandLineArguments):
+def command_line_compile(options: CommandLineArguments):
 
-    with open(source_path, "r") as file:
-        program = compile_urcl_to_executable(
-            file.read(),
-            target.CompileOptions(
-                target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
-                executable_type=target.ExecutableType.OBJECT,
-                executable_format=options.executable_format,
-                is_main=options.is_main
-            )
+    if options.use_stdin == options.use_stdin:
+        source_code = sys.stdin.buffer.read().decode("utf-8")
+    else:
+         with open(options.source_file, "r") as file:
+             source_code = file.read()
+    
+    program = compile_urcl_to_executable(
+        source_code,
+        target.CompileOptions(
+            target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
+            executable_type=target.ExecutableType.OBJECT,
+            executable_format=options.executable_format,
+            is_main=options.is_main
         )
-        if isinstance(program, bytes):
-            bytes_for_file = program
-        else:
-            print(program)
-            exit()
-        with open(options.output_file, "w+b") as file:
-            file.write(bytes_for_file)
+    )
+    if isinstance(program, bytes):
+        bytes_for_file = program
+    else:
+        print(program)
+        exit()
+    
+    if options.use_stdout:
+        sys.stdout.buffer.write(bytes_for_file)
+    else:
+        with open(options.output_file, "w+b") as out_file:
+            out_file.write(bytes_for_file)
 
 def main():
 
@@ -53,9 +64,24 @@ def main():
     argument_parser.add_argument("-lib", dest="lib", action="store_true", help="pass this if this file is not the entry point.")
     argument_parser.add_argument("-m", dest="machine", default="i386", help="instruction set of the target machine")
     k = argument_parser.parse_args(sys.argv[1:])
-    if k.output_file is None:
-        filename = k.source_file.split("/")[-1].split(".")[0] + ".o"
-        output_path = BIN_DIR.joinpath(filename).resolve().relative_to(BIN_DIR).resolve()
+    
+    if k.source_file == "-":
+        in_filename = "/dev/stdin"
+        use_stdin = True
+    else:
+        in_filename = k.source_file
+        use_stdin = False
+
+    if k.output_file == "-":
+        out_filename = "/dev/stdin"
+        use_stdout = True
+    else:
+        out_filename = k.output_file
+        use_stdout = False
+
+    if out_filename is None:
+        out_filename = in_filename.split("/")[-1].split(".")[0] + ".o"
+        output_path = BIN_DIR.joinpath(out_filename).resolve().relative_to(BIN_DIR).resolve()
         k.output_file = str(output_path)
     
     if k.executable_format.lower() == "bin":
@@ -72,13 +98,16 @@ def main():
     else:
         print(f"Machine type '{k.exec_file_type.lower()}' not known.")
         exit()
-    k = CommandLineArguments(
-        source_file=str(OLD_CWD.joinpath(k.source_file).resolve()),
+    
+    arguments = CommandLineArguments(
+        source_file=str(OLD_CWD.joinpath(in_filename).resolve()),
         output_file=str(OLD_CWD.joinpath(k.output_file).resolve()),
         executable_format=executable_format,
         is_main=not k.lib,
-        machine_type=machine
+        machine_type=machine,
+        use_stdin=use_stdin,
+        use_stdout=use_stdout
     )
-    command_line_compile(k.source_file, k)
+    command_line_compile(arguments)
 
 main()
