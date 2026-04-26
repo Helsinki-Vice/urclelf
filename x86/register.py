@@ -114,6 +114,17 @@ def get_registers(bits: Literal[16, 32, 64]) -> GeneralRegisters:
             Register.RDI,
             Register.RSI
         )
+    elif bits == 16:
+        return GeneralRegisters(
+            Register.AX,
+            Register.BX,
+            Register.CX,
+            Register.DX,
+            Register.SP,
+            Register.BP,
+            Register.DI,
+            Register.SI
+        )
     else:
         return GeneralRegisters(
             Register.EAX,

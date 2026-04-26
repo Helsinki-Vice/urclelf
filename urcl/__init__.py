@@ -3,15 +3,11 @@ URCL is a toy assembly-like langauge originally designed to target computers in 
 Informal documentation can be found at https://github.com/ModPunchtree/URCL"""
 
 import error
-import urcl.types as types
-import urcl.lex as lex
 import urcl.urclcst as urclcst
-import urcl.urclast as urclast
 
-from urcl.types import Mnemonic, GeneralRegister, BasePointer, StackPointer, Port, Label, Character
+from urcl.types import Mnemonic, GeneralRegister, BasePointer, StackPointer, Port, PortType, Label, Character
 from urcl.lex import tokenize, TokenStream
-from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode, OperandType, DefinedImmediate
-from urcl.urclast import TWO_OPERAND_ARITHMETIC_MNEMONICS, TWO_OPERAND_CONDITION_JUMP_MNEMONICS, THREE_OPERAND_CONDITION_JUMP_MNEMONICS, ZERO_OPERAND_MNEMONICS, THREE_OPERAND_ARITHMETIC_MNEMONICS
+from urcl.urclcst import CST, InstructionCSTNode, OperandCSTNode, OperandType, DefinedImmediate, TWO_OPERAND_ARITHMETIC_MNEMONICS, TWO_OPERAND_CONDITION_JUMP_MNEMONICS, THREE_OPERAND_CONDITION_JUMP_MNEMONICS, ZERO_OPERAND_MNEMONICS, THREE_OPERAND_ARITHMETIC_MNEMONICS
 
 def parse(source: str):
 

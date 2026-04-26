@@ -19,6 +19,7 @@ class ExecutableFormat(enum.Enum):
     FLAT = enum.auto()
     ELF = enum.auto()
     ASM = enum.auto()
+    TOKENS = enum.auto()
 
 class ExecutableType(enum.Enum):
     OBJECT = enum.auto()

@@ -1,7 +1,7 @@
 "This module provides types for respresenting x86 assembly"
 from dataclasses import dataclass
 import enum
-from typing import Literal, Self
+from typing import Literal, Self, Sequence
 from x86.register import Register, GeneralRegisters
 from error import Traceback
 
@@ -220,7 +220,7 @@ class ASMCode:
                 lines.append(str(instruction))
         return "\n".join(lines)
 
-def sum_into_effective_address(values: list[int | Label | Register], pointer_size: PointerSize, segment:Segment=Segment.DEFAULT) -> EffectiveAddress | Traceback:
+def sum_into_effective_address(values: Sequence[int | Label | Register], pointer_size: PointerSize, segment:Segment=Segment.DEFAULT) -> EffectiveAddress | Traceback:
 
     registers: list[Register] = []
     displacement = 0
@@ -237,7 +237,7 @@ def sum_into_effective_address(values: list[int | Label | Register], pointer_siz
                 return Traceback.new(f"Effective address cannot contain two symbol references ('{symbol.name}' and '{value.name}')")
     
     if displacement and symbol:
-        Traceback.new(f"Effective address that contain memory literal cannot also have symbolic reference to '{symbol.name}'")
+        Traceback.new(f"Effective address that contains memory literal cannot also have symbolic reference to '{symbol.name}'")
     if symbol:
         displacement = symbol
     

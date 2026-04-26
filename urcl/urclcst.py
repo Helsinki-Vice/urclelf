@@ -3,9 +3,81 @@ import enum
 from dataclasses import dataclass
 from typing import Union, Generic, TypeVar, Self
 
+import urcl.types
 from urcl.types import Mnemonic, Label, RelativeAddress, Character, Port, GeneralRegister, DefinedImmediate, BasePointer, StackPointer
 import urcl.lex
 from error import Traceback
+
+ZERO_OPERAND_MNEMONICS = [
+    Mnemonic.HLT,
+    Mnemonic.NOP,
+    Mnemonic.RET
+]
+BRANCH_MNEMONICS = [
+    Mnemonic.JMP,
+    Mnemonic.BRZ,
+    Mnemonic.BNZ,
+    Mnemonic.BLE,
+    Mnemonic.BGE,
+    Mnemonic.BRE,
+    Mnemonic.BNE,
+    Mnemonic.BRP,
+    Mnemonic.BRN,
+    Mnemonic.BRC,
+    Mnemonic.CAL,
+    Mnemonic.BOD,
+    Mnemonic.BEV,
+    Mnemonic.SBRG
+]
+
+TWO_OPERAND_CONDITION_JUMP_MNEMONICS = [
+    Mnemonic.BRZ,
+    Mnemonic.BNZ,
+    Mnemonic.BRP,
+    Mnemonic.BRN,
+    Mnemonic.BOD,
+    Mnemonic.BEV
+]
+
+THREE_OPERAND_CONDITION_JUMP_MNEMONICS = [
+    Mnemonic.BLE,
+    Mnemonic.BGE,
+    Mnemonic.BRE,
+    Mnemonic.BNE,
+    Mnemonic.BRC,
+    Mnemonic.SBRG,
+    Mnemonic.BRL
+]
+
+TWO_OPERAND_ARITHMETIC_MNEMONICS = [
+    Mnemonic.RSH,
+    Mnemonic.MOV,
+    Mnemonic.IMM,
+    Mnemonic.LSH,
+    Mnemonic.INC,
+    Mnemonic.DEC,
+    Mnemonic.NEG,
+    Mnemonic.NOT,
+    Mnemonic.ABS
+]
+
+THREE_OPERAND_ARITHMETIC_MNEMONICS = [
+    Mnemonic.ADD,
+    Mnemonic.NOR,
+    Mnemonic.SUB,
+    Mnemonic.AND,
+    Mnemonic.OR,
+    Mnemonic.XNOR,
+    Mnemonic.NAND,
+    Mnemonic.MLT,
+    Mnemonic.DIV,
+    Mnemonic.MOD,
+    Mnemonic.BSR,
+    Mnemonic.BSL,
+    Mnemonic.SDIV,
+    Mnemonic.BSS,
+    Mnemonic.XOR
+]
 
 T = TypeVar("T")
 @dataclass
@@ -16,7 +88,6 @@ class Terminal(Generic[T]):
 
     def __str__(self) -> str:
         return str(self.value)
-
 
 class OperandType(enum.Enum):
     INTEGER = enum.auto()
@@ -29,7 +100,7 @@ class OperandType(enum.Enum):
 
 @dataclass
 class OperandCSTNode:
-    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, Port, DefinedImmediate, str | BasePointer | StackPointer | list[Self]]
+    value: Union[Label, GeneralRegister, int, RelativeAddress, Character, urcl.types.PortType, DefinedImmediate, str | BasePointer | StackPointer | list[Self]]
     line_number: int
     column_number: int
 
@@ -95,11 +166,8 @@ def parse_operand(tokens: urcl.lex.TokenStream) -> OperandParseResult:
     elif token.type == urcl.lex.TokenType.PORT:
         if not isinstance(token.value, str) or not token.value:
             return OperandParseResult(f"Invalid Port: '{token.value}'", 1)
-        port = Port.from_value(token.value)
-        if port:
-            return OperandParseResult(OperandCSTNode(port, token.line_number, token.column_number), 1)
-        else:
-            return OperandParseResult(f"Unknown Port: '{token.value}'", 1)
+        return OperandParseResult(OperandCSTNode(urcl.types.PortType(0, token.value), token.line_number, token.column_number), 1)
+        
     
     elif token.type == urcl.lex.TokenType.MACRO:
         if isinstance(token.value, str):
@@ -159,7 +227,7 @@ class InstructionCSTNode:
                 index += result.tokens_consumed
             elif isinstance(result.data, str):
                 error = Traceback.new(result.data, tokens.tokens[index].line_number, tokens.tokens[index].column_number)
-                error.elaborate("Invalid operand")
+                error.elaborate(f"Invalid operand {result.data}")
                 return error
             else:
                 return Traceback.new("Invalid operand", tokens.tokens[index].line_number, tokens.tokens[index].column_number)
@@ -181,12 +249,17 @@ class CST:
     def __init__(self) -> None:
         
         self.lines: list[Line] = []
+        self.bits: int = 32
+        self.minreg: int = 32
+        self.minheap: int = 32
+        dw_data = bytearray()
     
     @classmethod
     def from_tokens(cls, source: urcl.lex.TokenStream) -> Self | Traceback:
 
         cst = CST()
         macros: dict[str, list[urcl.lex.Token]] = {}
+        
         for line in source.split_lines():
             tokens = line.tokens
             
@@ -225,10 +298,42 @@ class CST:
                             result_tokens.append(token)
                     else:
                         result_tokens.append(token)
+            
+            if tokens[0].type == urcl.lex.TokenType.IDENTIFIER and str(tokens[0].value).lower() == "bits":
+                if len(tokens) == 1:
+                    return Traceback.new("BITS header is missing value: how many bits?", tokens[0].line_number, tokens[0].column_number)
+                elif len(tokens) == 2:
+                    if tokens[1].type != urcl.lex.TokenType.INTEGER:
+                        return Traceback.new(f"Value for the BITS header should be an integer, not {tokens[1].value}", tokens[1].line_number, tokens[1].column_number)
+                    assert(isinstance(tokens[1].value, (int, str)))
+                    cst.bits = int(tokens[1].value)
+                    continue
+            
+            if tokens[0].type == urcl.lex.TokenType.IDENTIFIER and str(tokens[0].value).lower() == "minreg":
+                if len(tokens) == 1:
+                    return Traceback.new("MINREG header is missing value: how many registers does the program need?", tokens[0].line_number, tokens[0].column_number)
+                elif len(tokens) == 2:
+                    if tokens[1].type != urcl.lex.TokenType.INTEGER:
+                        return Traceback.new(f"Value for the MINREG header should be an integer, not {tokens[1].value}", tokens[1].line_number, tokens[1].column_number)
+                    assert(isinstance(tokens[1].value, (int, str)))
+                    cst.minreg = int(tokens[1].value)
+                    continue
+            
+            if tokens[0].type == urcl.lex.TokenType.IDENTIFIER and str(tokens[0].value).lower() == "minheap":
+                if len(tokens) == 1:
+                    return Traceback.new("MINHEAP header is missing value: much memory does the program need?", tokens[0].line_number, tokens[0].column_number)
+                elif len(tokens) == 2:
+                    if tokens[1].type != urcl.lex.TokenType.INTEGER:
+                        return Traceback.new(f"Value for the MINHEAP header should be an integer, not {tokens[1].value}", tokens[1].line_number, tokens[1].column_number)
+                    assert(isinstance(tokens[1].value, (int, str)))
+                    cst.minheap = int(tokens[1].value)
+                    continue
+            
             instruction = InstructionCSTNode.parse(urcl.lex.TokenStream(result_tokens))
             if not isinstance(instruction, InstructionCSTNode):
-                instruction.elaborate("Invalid instruction", tokens[0].line_number, tokens[0].column_number)
-                return instruction
+                error = instruction
+                error.elaborate("Invalid instruction", tokens[0].line_number, tokens[0].column_number)
+                return error
             
             cst.lines.append(instruction)
         return cst

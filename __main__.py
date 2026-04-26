@@ -93,6 +93,8 @@ def main():
         executable_format = target.ExecutableFormat.ELF
     elif k.executable_format.lower() == "asm":
         executable_format = target.ExecutableFormat.ASM
+    elif k.executable_format.lower() == "tokens":
+        executable_format = target.ExecutableFormat.TOKENS
     else:
         print(f"Executable file format '{k.executable_format.lower()}' not known.", file=sys.stdout)
         exit()

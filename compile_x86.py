@@ -11,12 +11,12 @@ NO_ERROR_EXIT_CODE = 0
 
 @dataclass(frozen=True)
 class InstructionInfo:
-    urcl_jump_target: urcl.Label | None
+    urcl_jump_target: x86.Label | x86.Register | None
     x86_destination_register: x86.Register | x86.EffectiveAddress | x86.Immediate | None
     x86_sources: list[x86.Operand]
     urcl_nnemonic: urcl.Mnemonic
     x86_nnemonic: x86.Mnemonic | None
-    urcl_port: urcl.Port | None
+    urcl_port: urcl.PortType | None
     urcl_sources: list[urcl.OperandCSTNode]
     line_number: int
     column_number: int
@@ -160,11 +160,33 @@ def compile_two_operand_arithmetic_instruction(bits: Literal[16, 32, 64], instru
 def compile_three_operand_arithmetic_instruction(bits: Literal[16, 32, 64], instruction_info: InstructionInfo):
     
     x86_code = x86.ASMCode(0, [])
-    if instruction_info.urcl_nnemonic in urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS and instruction_info.x86_destination_register is not None:
+    if instruction_info.x86_destination_register is None:
+        return x86_code
+    
+    x86_code.add_move(instruction_info.x86_destination_register, instruction_info.x86_sources[0].value)
+    
+    if instruction_info.urcl_nnemonic in [urcl.Mnemonic.BSL, urcl.Mnemonic.BSR]:
+        
+        if instruction_info.urcl_nnemonic == urcl.Mnemonic.BSL:
+            opcode = x86.Mnemonic.ROL
+            bit_mask = (2**(bits-1) - 1) << 1
+        else:
+            opcode = x86.Mnemonic.ROR
+            bit_mask = 2**(bits-1) - 1
+        
+        if not isinstance(instruction_info.x86_sources[1].value, int):
+            return Traceback.new(f"{instruction_info.urcl_nnemonic.name.upper()} instruction only supports shifting by a constant number of bits")
+        for _ in range(instruction_info.x86_sources[1].value):
+            x86_code.add_instruction(opcode, [instruction_info.x86_destination_register])
+            x86_code.add_instruction(x86.Mnemonic.AND, [instruction_info.x86_destination_register, bit_mask])
+
+    elif instruction_info.urcl_nnemonic in urcl.THREE_OPERAND_ARITHMETIC_MNEMONICS:
         if instruction_info.x86_destination_register != instruction_info.x86_sources[0]:
             x86_code.add_move(instruction_info.x86_destination_register, instruction_info.x86_sources[0].value)
         if instruction_info.x86_nnemonic:
             x86_code.add_instruction(instruction_info.x86_nnemonic, [instruction_info.x86_destination_register, instruction_info.x86_sources[1].value])
+    else:
+        ...
     
     return x86_code
 
@@ -187,18 +209,27 @@ def compile_pop_instruction(bits: Literal[16, 32, 64], instruction_info: Instruc
 def compile_list_load_instruction(bits: Literal[16, 32, 64], instruction_info: InstructionInfo):
     
     x86_code = x86.ASMCode(0, [])
+    if len(instruction_info.x86_sources) != 2:
+        return x86_code 
+    pointer = instruction_info.x86_sources[0].value
+    index = instruction_info.x86_sources[1].value
+    if isinstance(pointer, (x86.Register, int)) and isinstance(index, x86.Label):
+        tmp = pointer
+        pointer = index
+        index = tmp
     if instruction_info.urcl_nnemonic in [urcl.Mnemonic.LOD, urcl.Mnemonic.LLOD] and instruction_info.x86_destination_register is not None:
-        if len(instruction_info.x86_sources) == 2:
-            index = instruction_info.x86_sources[1].value
-            if not isinstance(index, int):
-                return Traceback.new("LLOD index must be an integer", line_number=instruction_info.urcl_sources[1].line_number, column_number=instruction_info.urcl_sources[1].column_number)
-        else:
-            index = 0
+        #if len(instruction_info.x86_sources) == 2:
+        #    if not isinstance(index, (int, x86.Register)):
+        #        return Traceback.new("LLOD index must be an integer or register", line_number=instruction_info.urcl_sources[1].line_number, column_number=instruction_info.urcl_sources[1].column_number)
+        #else:
+        #    index = 0
         
-        if isinstance(instruction_info.x86_sources[0].value, x86.EffectiveAddress):
-            return Traceback.new(f"Source operand for load instruction must be a register, not {instruction_info.x86_sources[0]}")
-        address_parts = [instruction_info.x86_sources[0].value, index]
-        if instruction_info.x86_sources[0].value not in [x86.Register.BP, x86.Register.SP, x86.Register.EBP, x86.Register.ESP]:
+        if isinstance(pointer, x86.EffectiveAddress):
+            return Traceback.new(f"Source operand for load instruction must be a register, not {pointer}")
+        if isinstance(index, x86.EffectiveAddress):
+            return Traceback.new(f"Offset operand for load instruction must be a register, not {index}")
+        address_parts: list[int | x86.Label | x86.Register] = [pointer, index]
+        if isinstance(pointer, x86.Register) and pointer not in [x86.Register.BP, x86.Register.SP, x86.Register.EBP, x86.Register.ESP]:
             address_parts.append(x86.Label("urcl_m0"))
         effective_address = x86.sum_into_effective_address(address_parts, x86.PointerSize.from_bits(bits))
         if isinstance(effective_address, Traceback):
@@ -213,7 +244,7 @@ def compile_list_load_instruction(bits: Literal[16, 32, 64], instruction_info: I
 def compile_list_store_instruction(bits: Literal[16, 32, 64], instruction_info: InstructionInfo):
     
     x86_code = x86.ASMCode(0, [])
-    if instruction_info.urcl_nnemonic in [urcl.Mnemonic.STR] and instruction_info.x86_destination_register is not None:
+    if instruction_info.urcl_nnemonic in [urcl.Mnemonic.LSTR] and instruction_info.x86_destination_register is not None:
         destination = instruction_info.x86_destination_register
         source = instruction_info.x86_sources[0]
         index = instruction_info.x86_sources[1]
@@ -221,7 +252,10 @@ def compile_list_store_instruction(bits: Literal[16, 32, 64], instruction_info: 
         if isinstance(destination, x86.EffectiveAddress):
             effective_address = destination
         else:
-            effective_address = x86.sum_into_effective_address([x86.Label("urcl_m0"), destination, index.value], x86.PointerSize.from_bits(bits))
+            memory = [destination, index.value]
+            if destination in [x86.get_registers(bits)]:
+                memory.append(x86.Label("urcl_m0"))
+            effective_address = x86.sum_into_effective_address(memory, x86.PointerSize.from_bits(bits))
         if isinstance(effective_address, Traceback):
             error = effective_address
             error.elaborate(f"{instruction_info.urcl_nnemonic.name} destination address cannot be translated to x86")
@@ -238,7 +272,11 @@ def compile_load_instruction(bits: Literal[16, 32, 64], instruction_info: Instru
         if isinstance(source, x86.EffectiveAddress):
             effective_address = source
         else:
-            effective_address = x86.sum_into_effective_address([x86.Label("urcl_m0"), source], x86.PointerSize.from_bits(bits))
+            assert(not isinstance(instruction_info.x86_sources[0].value, x86.EffectiveAddress))
+            address_parts = [instruction_info.x86_sources[0].value]
+            if isinstance(instruction_info.x86_sources[0].value, x86.Register) and instruction_info.x86_sources[0].value not in [x86.Register.BP, x86.Register.SP, x86.Register.EBP, x86.Register.ESP]:
+                address_parts.append(x86.Label("urcl_m0"))
+            effective_address = x86.sum_into_effective_address(address_parts, x86.PointerSize.from_bits(bits))
         if isinstance(effective_address, Traceback):
             error = effective_address
             error.elaborate(f"{instruction_info.urcl_nnemonic.name} source address {instruction_info.urcl_sources[0].value} cannot be translated to x86", line_number=instruction_info.urcl_sources[0].line_number, column_number=instruction_info.urcl_sources[0].column_number)
@@ -256,7 +294,10 @@ def compile_store_instruction(bits: Literal[16, 32, 64], instruction_info: Instr
         if isinstance(destination, x86.EffectiveAddress):
             effective_address = destination
         else:
-            effective_address = x86.sum_into_effective_address([x86.Label("urcl_m0"), destination], x86.PointerSize.from_bits(bits))
+            memory = [destination]
+            if isinstance(destination, x86.Register):
+                memory.append(x86.Label("urcl_m0"))
+            effective_address = x86.sum_into_effective_address(memory, x86.PointerSize.from_bits(bits))
         if isinstance(effective_address, Traceback):
             error = effective_address
             error.elaborate(f"{instruction_info.urcl_nnemonic.name} destination address cannot be translated to x86")
