@@ -28,7 +28,11 @@ class CommandLineArguments:
 def command_line_compile(options: CommandLineArguments):
 
     if options.use_stdin:
-        source_code = sys.stdin.buffer.read().decode("utf-8")
+        try:
+            source_code = sys.stdin.buffer.read().decode("utf-8")
+        except KeyboardInterrupt as error:
+            exit(1)
+
     else:
          with open(options.source_file, "r") as file:
              source_code = file.read()
@@ -80,7 +84,7 @@ def main():
 
     if out_filename is None:
         out_filename = in_filename.split("/")[-1].split(".")[0] + ".o"
-        output_path = BIN_DIR.joinpath(out_filename).resolve().relative_to(BIN_DIR).resolve()
+        output_path = OLD_CWD.joinpath(out_filename).resolve()
         k.output_file = str(output_path)
     
     if k.executable_format.lower() == "bin":

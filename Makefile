@@ -3,9 +3,6 @@ MAKEFLAGS += --silent
 stdlib:
 	python3 ./ stdlib/stdlib.urcl -lib -o bin/stdlib.o
 
-stdlib64:
-	python3 ./ stdlib/stdlib64.urcl -lib -o bin/stdlib.o -m x64
-
 m0:
 	gcc stdlib/m0.c -c -m32 --no-pie -o bin/m0.o
 
@@ -44,9 +41,9 @@ mandelbrot: # No worky
 
 mandelbrot_as:
 	python3 ./ examples/mandelbrot.urcl -o mandelbrot.asm -f asm
-	as mandelbrot.asm --32 -o bin/man.o
-	ld bin/man.o bin/stdlib.o bin/m0.o -o bin/man -m elf_i386 --no-pie
-	bin/man
+	as mandelbrot.asm --32 -o bin/mandelbrot.o
+	ld bin/man.o bin/stdlib.o bin/m0.o -o bin/mandelbrot -m elf_i386 --no-pie
+	bin/mandelbrot
 
 glibc_test:
 	python3 ./ examples/glibc_test.urcl -lib -o bin/glibc_test.o

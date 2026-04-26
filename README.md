@@ -34,7 +34,7 @@ urclelf will be using URCL version 1.5 until support for the langauge is complet
 - hex and binary literals
 - memory literals
 - %TEXT port
-- outputting strings directly to %TEXT
+- outputting strings directly to %TEXT (currently broken)
 - PSH and POP
 - branching
 - @DEFINE

@@ -78,6 +78,15 @@ class PointerSize(enum.StrEnum):
     DWORD = "DWORD PTR"
     QWORD = "QWORD PTR"
 
+    @staticmethod
+    def from_bits(bits: Literal[8, 16, 32, 64]):
+        return {
+            8: PointerSize.BYTE,
+            16: PointerSize.WORD,
+            32: PointerSize.DWORD,
+            64: PointerSize.QWORD
+        }.get(bits, PointerSize.DWORD)
+
 @dataclass(frozen=True)
 class Label:
     name: str
@@ -246,7 +255,7 @@ def sum_into_effective_address(values: list[int | Label | Register], pointer_siz
     
     return EffectiveAddress(pointer_size=pointer_size, segment=segment, base=base, index=index, displacement=displacement)
 
-def generate_division_code(destination: Operand, source_1: Operand, source_2: Operand, bits: Literal[32, 64], do_modulo: bool):
+def generate_division_code(destination: Operand, source_1: Operand, source_2: Operand, bits: Literal[16, 32, 64], do_modulo: bool):
     
     result = ASMCode(0, [])
     

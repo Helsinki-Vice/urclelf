@@ -101,7 +101,7 @@ class GeneralRegisters:
     di: Register
     si: Register
 
-def get_registers(bits: Literal[32, 64]) -> GeneralRegisters:
+def get_registers(bits: Literal[16, 32, 64]) -> GeneralRegisters:
 
     if bits == 64:
         return GeneralRegisters(
