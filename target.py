@@ -18,6 +18,7 @@ class OsAbi(enum.Enum):
 class ExecutableFormat(enum.Enum):
     FLAT = enum.auto()
     ELF = enum.auto()
+    ASM = enum.auto()
 
 class ExecutableType(enum.Enum):
     OBJECT = enum.auto()

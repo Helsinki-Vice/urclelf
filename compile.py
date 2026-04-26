@@ -59,7 +59,7 @@ def compile_urcl_to_x86_asm(urcl_program: urcl.CST, is_main: bool, bits: Literal
     
     return x86_assembly_code
 
-def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptions) -> x86.AssembledMachineCode | Traceback:
+def compile_urcl_source_to_x86_asm(source: str, options: target.CompileOptions) -> x86.ASMCode | Traceback:
 
     urcl_program = urcl.parse(source)
     if isinstance(urcl_program, Traceback):
@@ -78,29 +78,47 @@ def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptio
         error.elaborate(f"URCL code does not translate to {options.target.isa}")
         return error
     
-    machine_code = x86.assemble(assembly_code, bits)
+    return assembly_code
+
+def compile_urcl_source_to_flat_binary(source: str, options: target.CompileOptions) -> x86.AssembledMachineCode | Traceback:
+
+    asm = compile_urcl_source_to_x86_asm(source, options)
+    if isinstance(asm, Traceback):
+        return asm
+    
+    bits = options.target.get_word_size()
+    if isinstance(bits, Traceback):
+        error = bits
+        return error
+    
+    machine_code = x86.assemble(asm, bits)
     if isinstance(machine_code, Traceback):
         error = machine_code
         error.elaborate(f"Assembled {options.target.isa} program does not convert to machine code")
         return error
     
     return machine_code
-    
-    
 
 def compile_urcl_to_executable(source: str, options: target.CompileOptions) -> bytes | Traceback:
     
-    flat_binary = compile_urcl_source_to_flat_binary(source, options)
-    if isinstance(flat_binary, Traceback):
-        error = flat_binary
-        error.elaborate("Machine code could not be generated")
-        return error
-    
-    if options.executable_format == target.ExecutableFormat.FLAT:
-        output_binary = flat_binary.binary
-    elif options.executable_format == target.ExecutableFormat.ELF:
-        output_binary = elf.make_relocatable_elf(flat_binary, is_64_bit=(options.target.isa==target.Isa.X64))
+    if options.executable_format == target.ExecutableFormat.ASM:
+        asm = compile_urcl_source_to_x86_asm(source, options)
+        if isinstance(asm, Traceback):
+            return asm
+        return str(asm).encode("utf-8") + b"\n"
+        
     else:
-        return Traceback.new(f"Executable format {options.executable_format} is not supported")
-    
-    return bytes(output_binary)
+        flat_binary = compile_urcl_source_to_flat_binary(source, options)
+        if isinstance(flat_binary, Traceback):
+            error = flat_binary
+            error.elaborate("Machine code could not be generated")
+            return error
+
+        if options.executable_format == target.ExecutableFormat.FLAT:
+            output_binary = flat_binary.binary
+        elif options.executable_format == target.ExecutableFormat.ELF:
+            output_binary = elf.make_relocatable_elf(flat_binary, is_64_bit=(options.target.isa==target.Isa.X64))
+        else:
+            return Traceback.new(f"Executable format {options.executable_format} is not supported")
+
+        return bytes(output_binary)

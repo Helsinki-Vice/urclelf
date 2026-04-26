@@ -203,7 +203,7 @@ class ASMCode:
     
     def __str__(self) -> str:
 
-        lines: list[str] = []
+        lines: list[str] = [".intel_syntax noprefix", ".global _start"]
         for instruction in self.code:
             if isinstance(instruction, Label):
                 lines.append(f"{instruction}:")

@@ -11,9 +11,8 @@ BIN_DIR = CURRENT_DIR.joinpath("bin").resolve().relative_to(CURRENT_DIR).resolve
 os.chdir(CURRENT_DIR)
 
 from compile import compile_urcl_to_executable
-from elf import Elf32
 import target
-import x86
+import compile
 from error import Traceback
 
 @dataclass
@@ -28,25 +27,25 @@ class CommandLineArguments:
 
 def command_line_compile(options: CommandLineArguments):
 
-    if options.use_stdin == options.use_stdin:
+    if options.use_stdin:
         source_code = sys.stdin.buffer.read().decode("utf-8")
     else:
          with open(options.source_file, "r") as file:
              source_code = file.read()
     
-    program = compile_urcl_to_executable(
-        source_code,
-        target.CompileOptions(
-            target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
-            executable_type=target.ExecutableType.OBJECT,
-            executable_format=options.executable_format,
-            is_main=options.is_main
-        )
+    compile_options = target.CompileOptions(
+        target=target.Target(options.machine_type, target.ByteOrder.LITTLE, target.OsAbi.SYSV),
+        executable_type=target.ExecutableType.OBJECT,
+        executable_format=options.executable_format,
+        is_main=options.is_main
     )
+    
+    program = compile_urcl_to_executable(source_code, compile_options)
+
     if isinstance(program, bytes):
         bytes_for_file = program
     else:
-        print(program)
+        print(program, file=sys.stderr)
         exit()
     
     if options.use_stdout:
@@ -88,15 +87,17 @@ def main():
         executable_format = target.ExecutableFormat.FLAT
     elif k.executable_format.lower() in ["elf", None]:
         executable_format = target.ExecutableFormat.ELF
+    elif k.executable_format.lower() == "asm":
+        executable_format = target.ExecutableFormat.ASM
     else:
-        print(f"Executable file format '{k.executable_format.lower()}' not known.")
+        print(f"Executable file format '{k.executable_format.lower()}' not known.", file=sys.stdout)
         exit()
     if k.machine.lower() == "i386":
         machine = target.Isa.X86
     elif k.machine.lower() == "x64":
         machine = target.Isa.X64
     else:
-        print(f"Machine type '{k.exec_file_type.lower()}' not known.")
+        print(f"Machine type '{k.exec_file_type.lower()}' not known.", file=sys.stderr)
         exit()
     
     arguments = CommandLineArguments(

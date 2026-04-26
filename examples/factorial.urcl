@@ -2,13 +2,12 @@
 @DEFINE RESULT R1
 
 PSH 5
-CAL .facorial                       // int result = factorial(5);
-PSH R1
-CAL .urcl_port_numb_out             // urcl_port_text_out(result)
+CAL .factorial                      // int result = factorial(5);
+OUT %NUMB R1                        // urcl_port_text_out(result)
 OUT %TEXT '\n'
 HLT                                 // exit();
 
-.facorial                           // int factorial(int value) {
+.factorial                          // int factorial(int value) {
     PSH BP
     MOV BP SP
     SUB SP SP 0

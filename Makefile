@@ -6,6 +6,9 @@ stdlib:
 stdlib64:
 	python3 ./ stdlib/stdlib64.urcl -lib -o bin/stdlib.o -m x64
 
+m0:
+	gcc stdlib/m0.c -c -m32 --no-pie -o bin/m0.o
+
 hello_c:
 	make stdlib
 	gcc examples/hello.c -c -m32 --no-pie -o bin/hello.o
@@ -38,7 +41,12 @@ mandelbrot: # No worky
 	make stdlib
 	gcc stdlib/m0.c -c -o bin/m0.o -m32 -no-pie
 	ld bin/mandelbrot.o bin/stdlib.o bin/m0.o -o bin/mandelbrot -m elf_i386 --no-pie
-	objdump bin/mandelbrot -d -M intel > mandelbrot_code.txt
+
+mandelbrot_as:
+	python3 ./ examples/mandelbrot.urcl -o mandelbrot.asm -f asm
+	as mandelbrot.asm --32 -o bin/man.o
+	ld bin/man.o bin/stdlib.o bin/m0.o -o bin/man -m elf_i386 --no-pie
+	bin/man
 
 glibc_test:
 	python3 ./ examples/glibc_test.urcl -lib -o bin/glibc_test.o
@@ -49,6 +57,11 @@ hello_rust: # Requires i686-unknown-linux-gnu target
 	make stdlib
 	rustc examples/hello.rs -o bin/hello_rust --target i686-unknown-linux-gnu -Clink-arg=./bin/stdlib.o
 	bin/hello_rust
+
+m0_test:
+	python3 ./ examples/m0_test.urcl -o bin/m0_test.o
+	ld bin/m0_test.o bin/stdlib.o bin/m0.o -o bin/m0_test -m elf_i386 --no-pie
+	bin/m0_test
 
 clean:
 	rm bin/*

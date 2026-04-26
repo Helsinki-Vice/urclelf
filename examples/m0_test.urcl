@@ -1,0 +1,6 @@
+MOV R1 0
+STR R1 128
+LOD R3 R1
+OUT 2 R3
+OUT 1 '\n'
+HLT

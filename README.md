@@ -41,6 +41,7 @@ urclelf will be using URCL version 1.5 until support for the langauge is complet
 - defined immediates (currently broken)
 - line/column numbers for errors
 - %NUMB port
+- LOD/STR
 
 ## Unsupported Features:
 - array literals
@@ -48,7 +49,6 @@ urclelf will be using URCL version 1.5 until support for the langauge is complet
 - about half of all urcl opcodes
 - headers
 - most ports
-- LOD/STR (LLOD kinda works)
 - most x64 features
 - etc.
 

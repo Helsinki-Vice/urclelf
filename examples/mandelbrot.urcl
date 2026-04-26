@@ -8663,4 +8663,4 @@ ADD R1 R1 3
 LOD R2 R1
 BNZ .label_277 R2 
 .label_end_277
-nop
+HLT
