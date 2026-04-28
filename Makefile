@@ -1,10 +1,15 @@
 MAKEFLAGS += --silent
 
 stdlib:
-	python3 ./ stdlib/stdlib.urcl -lib -o bin/stdlib.o
+	python3 . stdlib/stdlib.urcl -lib -o bin/stdlib.o
 
 m0:
 	gcc stdlib/m0.c -c -m32 --no-pie -o bin/m0.o
+
+sdl2:
+	gcc stdlib/stdlib_sdl2.c -c -m32 -no-pie -o bin/stdlib_sdl2.o
+	python3 . examples/graphics.urcl -o bin/graphics.o
+	gcc bin/graphics.o bin/stdlib_sdl2.o -m32 -no-pie -lSDL2 -o bin/graphics -nostartfiles
 
 hello_c:
 	make stdlib

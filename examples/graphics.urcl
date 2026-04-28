@@ -1,0 +1,12 @@
+._start
+CAL .urcl_io_init
+.loop
+    IN R2 %MOUSE_X
+    OUT %x R2
+    IN r2 %MOUSE_Y
+    OUT %Y R2
+    IN R2 %MOUSE_BUTTONS
+    BRZ .loop R2
+    OUT %COLOR 31
+    OUT %BUFFER 0
+    JMP .loop

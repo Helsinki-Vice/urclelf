@@ -95,7 +95,7 @@ def compile_inout_instruction(instruction_info: InstructionInfo, bits: Literal[1
     
     port_symbol = x86.Label(f"urcl_port_{instruction_info.urcl_port.name.lower()}_{mnemonic.name.lower()}")
    
-    if (instruction_info.urcl_port == urcl.Port.TEXT) and (mnemonic == urcl.Mnemonic.OUT):
+    if (instruction_info.urcl_port.name == urcl.Port.TEXT.value.name) and (mnemonic == urcl.Mnemonic.OUT):
         
         urcl_source = instruction_info.urcl_sources[0].value
         if isinstance(urcl_source, str):
@@ -124,9 +124,23 @@ def compile_inout_instruction(instruction_info: InstructionInfo, bits: Literal[1
         x86_code.add_instruction(x86.Mnemonic.ADD, [registers.sp, int_count * 4])
         x86_code.add_instructions_to_restore_general_registers(registers)
     else:
-        if instruction_info.urcl_nnemonic == urcl.Mnemonic.OUT:
+        registers = x86.get_registers(bits)   
+        x86_code.add_instruction(x86.Mnemonic.PUSH, [registers.a])
+        x86_code.add_instruction(x86.Mnemonic.PUSH, [registers.c])
+        x86_code.add_instruction(x86.Mnemonic.PUSH, [registers.d])
+        use_arguments = instruction_info.urcl_nnemonic == urcl.Mnemonic.OUT
+        use_return_value = instruction_info.urcl_nnemonic == urcl.Mnemonic.IN
+        if use_arguments:
             x86_code.add_instruction(x86.Mnemonic.PUSH, [instruction_info.x86_sources[0].value])
         x86_code.add_instruction(x86.Mnemonic.CALL, [port_symbol])
+        if use_return_value:
+            assert(instruction_info.x86_destination_register is not None)
+            x86_code.add_move(instruction_info.x86_destination_register, registers.a)
+        if use_arguments:
+            x86_code.add_instruction(x86.Mnemonic.POP, [registers.d])
+        x86_code.add_instruction(x86.Mnemonic.POP, [registers.d])
+        x86_code.add_instruction(x86.Mnemonic.POP, [registers.c])
+        x86_code.add_instruction(x86.Mnemonic.POP, [registers.a])
 
     return x86_code
 
