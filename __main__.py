@@ -10,10 +10,9 @@ LIB_DIR = CURRENT_DIR.joinpath("lib").resolve().relative_to(CURRENT_DIR).resolve
 BIN_DIR = CURRENT_DIR.joinpath("bin").resolve().relative_to(CURRENT_DIR).resolve()
 os.chdir(CURRENT_DIR)
 
-from compile import compile_urcl_to_executable
 import target
-import compile
 from error import Traceback
+import translation
 
 @dataclass
 class CommandLineArguments:
@@ -44,7 +43,7 @@ def command_line_compile(options: CommandLineArguments):
         is_main=options.is_main
     )
     
-    program = compile_urcl_to_executable(source_code, compile_options)
+    program = translation.compile_urcl_to_executable(source_code, compile_options)
 
     if isinstance(program, bytes):
         bytes_for_file = program

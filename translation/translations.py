@@ -1,25 +1,12 @@
-import urcl
-from error import Traceback
-import x86
 import math
-from typing import Callable, Literal
+from typing import Literal
+
+import urcl
+import x86
+from error import Traceback
+from translation.familiy import InstructionFamily
+from translation.instructioninfo import InstructionInfo
 import sysv
-from dataclasses import dataclass
-
-PARSING_ERROR_MESSAGE = "Could not parse urcl source"
-NO_ERROR_EXIT_CODE = 0
-
-@dataclass(frozen=True)
-class InstructionInfo:
-    urcl_jump_target: x86.Label | x86.Register | None
-    x86_destination_register: x86.Register | x86.EffectiveAddress | x86.Immediate | None
-    x86_sources: list[x86.Operand]
-    urcl_nnemonic: urcl.Mnemonic
-    x86_nnemonic: x86.Mnemonic | None
-    urcl_port: urcl.PortType | None
-    urcl_sources: list[urcl.OperandCSTNode]
-    line_number: int
-    column_number: int
 
 def bytes_to_stack_ints(value: bytes, bytes_per_int: int):
     """Givin a sequence of bytes, what little endian ints do we push
@@ -348,16 +335,6 @@ def compile_multiply_instruction(bits: Literal[16, 32, 64], instruction_info: In
             x86_code.add_instruction(x86.Mnemonic.POP, [multiplicand_1_register])
     
     return x86_code
-
-@dataclass
-class InstructionFamily:
-    mnemonics: list[urcl.Mnemonic]
-    compile: Callable[[Literal[16, 32, 64], InstructionInfo], x86.ASMCode | Traceback]
-    operand_count: int
-    requires_jump_target: bool
-    writes_to_register: bool
-    required_sources: int
-    source_start_index: int
 
 TRANSLATIONS: list[InstructionFamily] = [
     InstructionFamily(
